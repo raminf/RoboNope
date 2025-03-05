@@ -52,11 +52,32 @@ typedef struct {
     ngx_array_t *allow;
 } ngx_http_sayplease_robot_t;
 
+#ifdef NGINX_BUILD
+/* Module configuration structures for NGINX build */
+typedef struct {
+    ngx_array_t *cache;         /* Cache for bot fingerprints */
+    ngx_uint_t   cache_index;   /* Current index in the cache */
+    time_t       last_cleanup;  /* Time of last cache cleanup */
+} ngx_http_sayplease_main_conf_t;
+
+typedef struct {
+    ngx_flag_t   enable;             /* Enable/disable the module */
+    ngx_str_t    robots_path;        /* Path to robots.txt file */
+    ngx_str_t    db_path;            /* Path to database file */
+    ngx_str_t    static_content_path; /* Path to static content */
+    ngx_flag_t   dynamic_content;    /* Generate dynamic content */
+    ngx_int_t    cache_ttl;          /* Cache TTL in seconds */
+    ngx_int_t    max_cache_entries;  /* Maximum number of cache entries */
+    ngx_str_t    honeypot_class;     /* CSS class for honeypot elements */
+    ngx_array_t *disallow_patterns;  /* Patterns to disallow */
+} ngx_http_sayplease_loc_conf_t;
+#endif /* NGINX_BUILD */
+
 /* Function declarations */
 #ifdef NGINX_BUILD
 /* Function declarations for NGINX build */
-ngx_int_t ngx_http_sayplease_log_request(sqlite3 *db, ngx_http_request_t *r, ngx_str_t *url);
-ngx_int_t ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns);
+/* These functions are static in the implementation, so we don't declare them here */
+/* The generate_content function is also static in the implementation */
 #else
 /* Function declarations for testing */
 ngx_int_t ngx_http_sayplease_load_robots(ngx_str_t *robots_path);
