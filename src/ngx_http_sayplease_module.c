@@ -26,6 +26,7 @@ static void ngx_http_sayplease_cache_cleanup(ngx_http_sayplease_main_conf_t *mcf
 static u_char *ngx_http_sayplease_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs);
 static u_char *ngx_http_sayplease_generate_random_text(ngx_pool_t *pool, ngx_uint_t words);
 static ngx_str_t *ngx_http_sayplease_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url);
+static ngx_int_t ngx_http_sayplease_send_response(ngx_http_request_t *r, u_char *content);
 
 static ngx_command_t ngx_http_sayplease_commands[] = {
     {
@@ -244,103 +245,90 @@ ngx_http_sayplease_init(ngx_conf_t *cf)
 static ngx_int_t
 ngx_http_sayplease_handler(ngx_http_request_t *r)
 {
-    ngx_http_sayplease_loc_conf_t *lcf;
     ngx_http_sayplease_main_conf_t *mcf;
-    ngx_str_t *patterns;
+    ngx_http_sayplease_loc_conf_t *lcf;
+    ngx_str_t matched_pattern;
+    ngx_int_t rc;
     ngx_uint_t i;
-    ngx_str_t *pattern;
     u_char *content;
-    ngx_buf_t *b;
-    ngx_chain_t out;
-    ngx_str_t matched_pattern = ngx_null_string;
-
+    u_char fingerprint[16];
+    ngx_http_sayplease_robot_entry_t *entry;
+    ngx_str_t *pattern;
+    
+    // Get module configuration
+    mcf = ngx_http_get_module_main_conf(r, ngx_http_sayplease_module);
     lcf = ngx_http_get_module_loc_conf(r, ngx_http_sayplease_module);
+    
     if (!lcf->enable) {
         return NGX_DECLINED;
     }
-
-    mcf = ngx_http_get_module_main_conf(r, ngx_http_sayplease_module);
-    patterns = mcf->robot_entries->elts;
-
+    
     // Check if URL matches any disallow pattern
     for (i = 0; i < mcf->robot_entries->nelts; i++) {
-        ngx_str_t *pattern;
-        ngx_http_sayplease_robot_entry_t *entry;
+        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
         
-        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
+        // Skip if no disallow patterns
+        if (entry[i].disallow == NULL || entry[i].disallow->nelts == 0) {
+            continue;
+        }
+        
         pattern = entry[i].disallow->elts;
-
-        if (ngx_strncmp(r->uri.data, pattern->data, pattern->len) == 0) {
-            matched_pattern = *pattern;
-            break;
+        
+        // Check each disallow pattern
+        for (ngx_uint_t j = 0; j < entry[i].disallow->nelts; j++) {
+            if (ngx_strncmp(r->uri.data, pattern[j].data, pattern[j].len) == 0) {
+                matched_pattern = pattern[j];
+                
+                // Generate MD5 fingerprint of client IP
+                ngx_md5_t md5;
+                ngx_md5_init(&md5);
+                ngx_md5_update(&md5, r->connection->addr_text.data, r->connection->addr_text.len);
+                ngx_md5_update(&md5, r->headers_in.user_agent->value.data, r->headers_in.user_agent->value.len);
+                ngx_md5_final(fingerprint, &md5);
+                
+                // Check if client is already in cache
+                if (ngx_http_sayplease_cache_lookup(mcf, fingerprint) == NGX_OK) {
+                    // Return cached response
+                    content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
+                    if (content == NULL) {
+                        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    }
+                    
+                    // Log request
+                    ngx_http_sayplease_log_request(
+                        mcf->db,
+                        r,
+                        &matched_pattern
+                    );
+                    
+                    // Send response
+                    return ngx_http_sayplease_send_response(r, content);
+                } else {
+                    // Add client to cache
+                    ngx_http_sayplease_cache_insert(mcf, fingerprint);
+                    
+                    // Generate new content
+                    content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
+                    if (content == NULL) {
+                        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    }
+                    
+                    // Log request
+                    ngx_http_sayplease_log_request(
+                        mcf->db,
+                        r,
+                        &matched_pattern
+                    );
+                    
+                    // Send response
+                    return ngx_http_sayplease_send_response(r, content);
+                }
+            }
         }
     }
-
-    if (matched_pattern.len == 0) {
-        return NGX_DECLINED;
-    }
-
-    // Generate request fingerprint
-    u_char fingerprint[32];
-    ngx_md5_t md5;
-    ngx_md5_init(&md5);
-    ngx_md5_update(&md5, r->connection->addr_text.data, r->connection->addr_text.len);
-    ngx_md5_update(&md5, r->headers_in.user_agent->value.data, r->headers_in.user_agent->value.len);
-    ngx_md5_update(&md5, r->uri.data, r->uri.len);
-    ngx_md5_final(fingerprint, &md5);
-
-    // Check cache first
-    if (ngx_http_sayplease_cache_lookup(mcf, fingerprint) == NGX_OK) {
-        // Return cached response
-        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
-        content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
-        if (content == NULL) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-    } else {
-        // Log the request and cache the fingerprint
-        ngx_http_sayplease_log_request(
-#ifdef SAYPLEASE_USE_DUCKDB
-            mcf->conn,
-#else
-            mcf->db,
-#endif
-            r,
-            &matched_pattern);
-
-        ngx_http_sayplease_cache_insert(mcf, fingerprint);
-
-        // Generate new content
-        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
-        content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
-        if (content == NULL) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-    }
-
-    // Set response headers
-    r->headers_out.content_type.len = sizeof("text/html") - 1;
-    r->headers_out.content_type.data = (u_char *) "text/html";
-    r->headers_out.status = NGX_HTTP_OK;
-
-    // Allocate response buffer
-    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
-    if (b == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    b->pos = content;
-    b->last = content + ngx_strlen(content);
-    b->memory = 1;
-    b->last_buf = 1;
-
-    out.buf = b;
-    out.next = NULL;
-
-    r->headers_out.content_length_n = b->last - b->pos;
-    ngx_http_send_header(r);
-
-    return ngx_http_output_filter(r, &out);
+    
+    // No match found, pass to next handler
+    return NGX_DECLINED;
 }
 
 static ngx_int_t
@@ -669,30 +657,34 @@ ngx_http_sayplease_generate_random_text(ngx_pool_t *pool, ngx_uint_t words)
 static ngx_str_t *
 ngx_http_sayplease_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url)
 {
-    static const char *honeypot_paths[] = {
-        "admin", "login", "private", "secret", "config",
-        "backup", "db", "wp-admin", "administrator", "console"
-    };
-    static const size_t num_paths = sizeof(honeypot_paths) / sizeof(honeypot_paths[0]);
-
-    ngx_str_t *link = ngx_pcalloc(pool, sizeof(ngx_str_t));
+    ngx_str_t *link;
+    u_char *p;
+    size_t len;
+    
+    // Create a honeypot link based on the base URL
+    len = base_url->len + sizeof("/admin/login") - 1;
+    
+    link = ngx_palloc(pool, sizeof(ngx_str_t));
     if (link == NULL) {
         return NULL;
     }
-
-    // Generate random path
-    size_t path_index = ngx_random() % num_paths;
     
-    // Allocate memory for the full URL
-    link->data = ngx_pcalloc(pool, base_url->len + ngx_strlen(honeypot_paths[path_index]) + 2);
-    if (link->data == NULL) {
+    p = ngx_palloc(pool, len + 1);
+    if (p == NULL) {
         return NULL;
     }
-
-    // Construct the URL
-    ngx_sprintf(link->data, "%s/%s", base_url->data, honeypot_paths[path_index]);
-    link->len = ngx_strlen(link->data);
-
+    
+    link->data = p;
+    
+    // Copy base URL
+    p = ngx_cpymem(p, base_url->data, base_url->len);
+    
+    // Add honeypot path
+    p = ngx_cpymem(p, "/admin/login", sizeof("/admin/login") - 1);
+    
+    *p = '\0';
+    link->len = p - link->data;
+    
     return link;
 }
 
@@ -748,4 +740,35 @@ ngx_http_sayplease_str_create(ngx_pool_t *pool, const char *src)
     ngx_memcpy(dst->data, src, len);
     
     return dst;
+}
+
+static ngx_int_t
+ngx_http_sayplease_send_response(ngx_http_request_t *r, u_char *content)
+{
+    ngx_buf_t *b;
+    ngx_chain_t out;
+    
+    // Set response headers
+    r->headers_out.content_type.len = sizeof("text/html") - 1;
+    r->headers_out.content_type.data = (u_char *) "text/html";
+    r->headers_out.status = NGX_HTTP_OK;
+    
+    // Allocate response buffer
+    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+    if (b == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    
+    b->pos = content;
+    b->last = content + ngx_strlen(content);
+    b->memory = 1;
+    b->last_buf = 1;
+    
+    out.buf = b;
+    out.next = NULL;
+    
+    r->headers_out.content_length_n = b->last - b->pos;
+    ngx_http_send_header(r);
+    
+    return ngx_http_output_filter(r, &out);
 } 
