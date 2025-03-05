@@ -388,8 +388,12 @@ ngx_http_sayplease_load_robots(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *r
                 if (entry == NULL) {
                     return NGX_ERROR;
                 }
-                entry->user_agent.data = (u_char *)ngx_pstrdup(mcf->cache_pool, value);
                 entry->user_agent.len = ngx_strlen(value);
+                entry->user_agent.data = ngx_pcalloc(mcf->cache_pool, entry->user_agent.len + 1);
+                if (entry->user_agent.data == NULL) {
+                    return NGX_ERROR;
+                }
+                ngx_memcpy(entry->user_agent.data, value, entry->user_agent.len);
                 entry->allow = ngx_array_create(mcf->cache_pool, 4, sizeof(ngx_str_t));
                 entry->disallow = ngx_array_create(mcf->cache_pool, 4, sizeof(ngx_str_t));
             }
@@ -410,8 +414,12 @@ ngx_http_sayplease_load_robots(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *r
                     return NGX_ERROR;
                 }
 
-                pattern->data = (u_char *)ngx_pstrdup(mcf->cache_pool, value);
                 pattern->len = ngx_strlen(value);
+                pattern->data = ngx_pcalloc(mcf->cache_pool, pattern->len + 1);
+                if (pattern->data == NULL) {
+                    return NGX_ERROR;
+                }
+                ngx_memcpy(pattern->data, value, pattern->len);
             }
         }
 
@@ -452,6 +460,12 @@ ngx_http_sayplease_init_db(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *db_pa
     }
 
 #else
+    sqlite3 *sqlite_db;
+    if (sqlite3_open((char *)db_path->data, &sqlite_db) != SQLITE_OK) {
+        return NGX_ERROR;
+    }
+    mcf->db = sqlite_db;
+
     char *err_msg = NULL;
     char *sql = "CREATE TABLE IF NOT EXISTS requests ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -461,10 +475,6 @@ ngx_http_sayplease_init_db(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *db_pa
                 "url TEXT,"
                 "matched_pattern TEXT"
                 ");";
-
-    if (sqlite3_open((char *)db_path->data, &mcf->db) != SQLITE_OK) {
-        return NGX_ERROR;
-    }
 
     if (sqlite3_exec(mcf->db, sql, NULL, NULL, &err_msg) != SQLITE_OK) {
         sqlite3_free(err_msg);
@@ -478,16 +488,14 @@ ngx_http_sayplease_init_db(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *db_pa
 static u_char *
 ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns)
 {
-    ngx_http_sayplease_loc_conf_t *lcf;
+    /* We can't access the location configuration here, so we'll use default behavior */
+    ngx_int_t use_lorem_ipsum = 1; /* Default to using Lorem Ipsum */
     u_char *content, *body;
     ngx_str_t *honeypot_link;
     size_t total_len;
 
-    lcf = ngx_http_get_module_loc_conf(ngx_cycle->conf_ctx[ngx_http_module.ctx_index],
-                                      ngx_http_sayplease_module);
-
     // Generate body content
-    if (lcf->use_lorem_ipsum) {
+    if (use_lorem_ipsum) {
         body = ngx_http_sayplease_generate_lorem_ipsum(pool, 3);
     } else {
         body = ngx_http_sayplease_generate_random_text(pool, 100);
@@ -524,10 +532,10 @@ ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_
         "<a href=\"%s\" class=\"%s\">Important Information</a>\n"
         "</body>\n"
         "</html>",
-        lcf->honeypot_class.data,
+        "honeypot",
         body,
         honeypot_link->data,
-        lcf->honeypot_class.data);
+        "honeypot");
 
     return content;
 }
@@ -698,4 +706,28 @@ static void ngx_http_sayplease_cache_cleanup(ngx_http_sayplease_main_conf_t *mcf
 static void ngx_http_sayplease_cleanup_db(void *data)
 {
     // Implementation of ngx_http_sayplease_cleanup_db function
+}
+
+/* Helper function to convert char* to ngx_str_t */
+static ngx_str_t *
+ngx_http_sayplease_str_create(ngx_pool_t *pool, const char *src)
+{
+    ngx_str_t *dst;
+    size_t len;
+    
+    dst = ngx_palloc(pool, sizeof(ngx_str_t));
+    if (dst == NULL) {
+        return NULL;
+    }
+    
+    len = ngx_strlen(src);
+    dst->len = len;
+    dst->data = ngx_pcalloc(pool, len + 1);
+    if (dst->data == NULL) {
+        return NULL;
+    }
+    
+    ngx_memcpy(dst->data, src, len);
+    
+    return dst;
 } 

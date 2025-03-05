@@ -53,10 +53,15 @@ typedef struct {
 } ngx_http_sayplease_robot_t;
 
 #ifdef NGINX_BUILD
+/* Constants for NGINX build */
+#define NGX_HTTP_SAYPLEASE_MAX_CACHE 1000
+
 /* Additional structures needed for NGINX build */
 typedef struct {
     ngx_str_t pattern;
+    ngx_str_t user_agent;  /* User agent pattern */
     ngx_array_t *disallow;  /* Array of disallow patterns */
+    ngx_array_t *allow;     /* Array of allow patterns */
 } ngx_http_sayplease_robot_entry_t;
 
 /* Module configuration structures for NGINX build */
@@ -66,6 +71,7 @@ typedef struct {
     time_t       last_cleanup;  /* Time of last cache cleanup */
     ngx_array_t *robot_entries; /* Array of robot entries */
     void        *db;            /* Database connection */
+    ngx_pool_t  *cache_pool;    /* Memory pool for cache */
 } ngx_http_sayplease_main_conf_t;
 
 typedef struct {
@@ -74,8 +80,8 @@ typedef struct {
     ngx_str_t    db_path;            /* Path to database file */
     ngx_str_t    static_content_path; /* Path to static content */
     ngx_flag_t   dynamic_content;    /* Generate dynamic content */
-    ngx_int_t    cache_ttl;          /* Cache TTL in seconds */
-    ngx_int_t    max_cache_entries;  /* Maximum number of cache entries */
+    ngx_uint_t   cache_ttl;          /* Cache TTL in seconds */
+    ngx_uint_t   max_cache_entries;  /* Maximum number of cache entries */
     ngx_str_t    honeypot_class;     /* CSS class for honeypot elements */
     ngx_array_t *disallow_patterns;  /* Patterns to disallow */
     ngx_flag_t   use_lorem_ipsum;    /* Use Lorem Ipsum for content */
@@ -97,6 +103,9 @@ static ngx_int_t ngx_http_sayplease_log_request(
     ngx_http_request_t *r,
     ngx_str_t *matched_pattern);
 static u_char *ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns);
+
+/* Declare external NGINX functions and variables needed by the implementation */
+extern ngx_module_t ngx_http_module;
 
 #endif /* NGINX_BUILD */
 
