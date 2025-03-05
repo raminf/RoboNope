@@ -5,12 +5,7 @@
 [![Nginx Version](https://img.shields.io/badge/Nginx-1.18%2B-green.svg)](https://nginx.org/)
 ![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)
 ![Language](https://img.shields.io/badge/language-C-orange.svg)
-![GitHub Issues](https://img.shields.io/github/issues/raminf/SayPlease)
-![GitHub Pull Requests](https://img.shields.io/github/issues-pr/raminf/SayPlease)
 ![GitHub last commit](https://img.shields.io/github/last-commit/raminf/SayPlease)
-![GitHub code size](https://img.shields.io/github/languages/code-size/raminf/SayPlease)
-![GitHub top language](https://img.shields.io/github/languages/top/raminf/SayPlease)
-![GitHub contributors](https://img.shields.io/github/contributors/raminf/SayPlease)
 
 `SayPlease` is an Nginx module designed to handle requests that match patterns in robots.txt Disallow entries. It serves randomly generated content to bots that ignore robots.txt rules and tracks these violations.
 
