@@ -2,6 +2,7 @@
 #define _NGX_HTTP_SAYPLEASE_MODULE_H_INCLUDED_
 
 #include <stddef.h>
+#include <stdint.h>  /* For uint32_t type */
 
 /* 
  * Define types only for testing, not when building with NGINX 
