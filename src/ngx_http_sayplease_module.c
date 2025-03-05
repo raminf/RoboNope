@@ -248,7 +248,6 @@ ngx_http_sayplease_handler(ngx_http_request_t *r)
     ngx_http_sayplease_main_conf_t *mcf;
     ngx_http_sayplease_loc_conf_t *lcf;
     ngx_str_t matched_pattern;
-    ngx_int_t rc;
     ngx_uint_t i;
     u_char *content;
     u_char fingerprint[16];
