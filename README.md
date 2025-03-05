@@ -1,10 +1,12 @@
 # SayPlease - Nginx Module
 
-[![Build and Test](https://github.com/yourusername/sayplease/actions/workflows/build.yml/badge.svg)](https://github.com/yourusername/sayplease/actions/workflows/build.yml)
+[![Build and Test](https://github.com/raminf/SayPlease/actions/workflows/build.yml/badge.svg)](https://github.com/raminf/SayPlease/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Nginx Version](https://img.shields.io/badge/Nginx-1.18%2B-green.svg)](https://nginx.org/)
 
-SayPlease is an Nginx module designed to handle requests that match patterns in robots.txt Disallow entries. It serves randomly generated content to bots that ignore robots.txt rules and tracks these violations.
+`SayPlease` is an Nginx module designed to handle requests that match patterns in robots.txt Disallow entries. It serves randomly generated content to bots that ignore robots.txt rules and tracks these violations.
+
+If a bot spidering your website ignores the `robots.txt` file, they will find themselves in a [https://en.wikipedia.org/wiki/Colossal_Cave_Adventure](Maze of Twisty Little Passages).
 
 ## Features
 
