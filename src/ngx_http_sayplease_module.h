@@ -53,11 +53,19 @@ typedef struct {
 } ngx_http_sayplease_robot_t;
 
 #ifdef NGINX_BUILD
+/* Additional structures needed for NGINX build */
+typedef struct {
+    ngx_str_t pattern;
+    ngx_array_t *disallow;  /* Array of disallow patterns */
+} ngx_http_sayplease_robot_entry_t;
+
 /* Module configuration structures for NGINX build */
 typedef struct {
     ngx_array_t *cache;         /* Cache for bot fingerprints */
     ngx_uint_t   cache_index;   /* Current index in the cache */
     time_t       last_cleanup;  /* Time of last cache cleanup */
+    ngx_array_t *robot_entries; /* Array of robot entries */
+    void        *db;            /* Database connection */
 } ngx_http_sayplease_main_conf_t;
 
 typedef struct {
@@ -70,15 +78,30 @@ typedef struct {
     ngx_int_t    max_cache_entries;  /* Maximum number of cache entries */
     ngx_str_t    honeypot_class;     /* CSS class for honeypot elements */
     ngx_array_t *disallow_patterns;  /* Patterns to disallow */
+    ngx_flag_t   use_lorem_ipsum;    /* Use Lorem Ipsum for content */
 } ngx_http_sayplease_loc_conf_t;
+
+/* Function prototypes for functions used in the implementation */
+static ngx_int_t ngx_http_sayplease_load_robots(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *robots_path);
+static ngx_int_t ngx_http_sayplease_init_db(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *db_path);
+static ngx_int_t ngx_http_sayplease_init_cache(ngx_http_sayplease_main_conf_t *mcf);
+static ngx_int_t ngx_http_sayplease_cache_lookup(ngx_http_sayplease_main_conf_t *mcf, u_char *fingerprint);
+static void ngx_http_sayplease_cache_insert(ngx_http_sayplease_main_conf_t *mcf, u_char *fingerprint);
+static void ngx_http_sayplease_cache_cleanup(ngx_http_sayplease_main_conf_t *mcf);
+static ngx_int_t ngx_http_sayplease_log_request(
+#ifdef SAYPLEASE_USE_DUCKDB
+    duckdb_connection conn,
+#else
+    sqlite3 *db,
+#endif
+    ngx_http_request_t *r,
+    ngx_str_t *matched_pattern);
+static u_char *ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns);
+
 #endif /* NGINX_BUILD */
 
 /* Function declarations */
-#ifdef NGINX_BUILD
-/* Function declarations for NGINX build */
-/* These functions are static in the implementation, so we don't declare them here */
-/* The generate_content function is also static in the implementation */
-#else
+#ifndef NGINX_BUILD
 /* Function declarations for testing */
 ngx_int_t ngx_http_sayplease_load_robots(ngx_str_t *robots_path);
 ngx_int_t ngx_http_sayplease_is_blocked_url(ngx_str_t *url);
@@ -96,6 +119,6 @@ void *ngx_palloc(ngx_pool_t *pool, size_t size);
 void *ngx_pcalloc(ngx_pool_t *pool, size_t size);
 ngx_array_t *ngx_array_create(ngx_pool_t *pool, ngx_uint_t n, size_t size);
 void *ngx_array_push(ngx_array_t *a);
-#endif /* NGINX_BUILD */
+#endif /* !NGINX_BUILD */
 
 #endif /* _NGX_HTTP_SAYPLEASE_MODULE_H_INCLUDED_ */ 
