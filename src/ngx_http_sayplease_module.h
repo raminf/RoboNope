@@ -3,6 +3,12 @@
 
 #include <stddef.h>
 
+/* 
+ * Define types only for testing, not when building with NGINX 
+ * NGINX_BUILD is defined in the module's config file when building with NGINX
+ */
+#ifndef NGINX_BUILD
+
 /* Basic type definitions for testing */
 typedef unsigned char u_char;
 typedef unsigned int ngx_uint_t;
@@ -37,6 +43,8 @@ typedef struct {
     ngx_pool_t *pool;
 } ngx_array_t;
 
+#endif /* !NGINX_BUILD */
+
 /* SayPlease module structures */
 typedef struct {
     ngx_str_t user_agent;
@@ -44,6 +52,12 @@ typedef struct {
     ngx_array_t *allow;
 } ngx_http_sayplease_robot_t;
 
+/* Function declarations */
+#ifdef NGINX_BUILD
+/* Function declarations for NGINX build */
+ngx_int_t ngx_http_sayplease_log_request(sqlite3 *db, ngx_http_request_t *r, ngx_str_t *url);
+ngx_int_t ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns);
+#else
 /* Function declarations for testing */
 ngx_int_t ngx_http_sayplease_load_robots(ngx_str_t *robots_path);
 ngx_int_t ngx_http_sayplease_is_blocked_url(ngx_str_t *url);
@@ -61,5 +75,6 @@ void *ngx_palloc(ngx_pool_t *pool, size_t size);
 void *ngx_pcalloc(ngx_pool_t *pool, size_t size);
 ngx_array_t *ngx_array_create(ngx_pool_t *pool, ngx_uint_t n, size_t size);
 void *ngx_array_push(ngx_array_t *a);
+#endif /* NGINX_BUILD */
 
 #endif /* _NGX_HTTP_SAYPLEASE_MODULE_H_INCLUDED_ */ 

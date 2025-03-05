@@ -10,6 +10,9 @@ else
     have_sqlite=yes
 fi
 
+# Define NGINX_BUILD to avoid type conflicts
+CFLAGS="$CFLAGS -DNGINX_BUILD"
+
 # Configure module
 if test -n "$ngx_module_link"; then
     ngx_module_type=HTTP
