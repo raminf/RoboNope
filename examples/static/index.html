@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SayPlease Static Example</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SayPlease Static Content Example</h1>
+        </header>
+        
+        <main>
+            <section class="intro">
+                <h2>About This Page</h2>
+                <p>This is an example of static content that can be served by the SayPlease module when a bot ignores robots.txt rules.</p>
+                <p>Instead of generating dynamic content, you can configure the module to serve pre-made static pages like this one.</p>
+            </section>
+            
+            <section class="features">
+                <h2>Features</h2>
+                <ul>
+                    <li>Customizable static content</li>
+                    <li>Consistent responses for bots</li>
+                    <li>Lower CPU usage compared to dynamic content</li>
+                    <li>Can include honeypot links</li>
+                </ul>
+            </section>
+            
+            <section class="honeypot">
+                <h2>Hidden Content</h2>
+                <p>This section contains links that are hidden from regular users but visible to bots.</p>
+                <div class="honeypot-links">
+                    <a href="/admin/login" class="honeypot">Admin Login</a>
+                    <a href="/private/data" class="honeypot">Private Data</a>
+                    <a href="/config/settings" class="honeypot">Configuration</a>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2023 SayPlease Module Example</p>
+        </footer>
+    </div>
+</body>
+</html> 
