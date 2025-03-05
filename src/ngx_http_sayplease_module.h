@@ -13,6 +13,8 @@
 typedef unsigned char u_char;
 typedef unsigned int ngx_uint_t;
 typedef int ngx_int_t;
+typedef int ngx_flag_t;
+typedef int ngx_fd_t;
 
 /* Constants for testing */
 #define NGX_OK 0
@@ -43,6 +45,12 @@ typedef struct {
     ngx_pool_t *pool;
 } ngx_array_t;
 
+/* MD5 definitions for testing */
+typedef struct {
+    uint32_t  a, b, c, d;
+    uint32_t  bytes;
+} ngx_md5_t;
+
 #endif /* !NGINX_BUILD */
 
 /* SayPlease module structures */
@@ -55,6 +63,9 @@ typedef struct {
 #ifdef NGINX_BUILD
 /* Constants for NGINX build */
 #define NGX_HTTP_SAYPLEASE_MAX_CACHE 1000
+
+/* Include NGINX MD5 header */
+#include <ngx_md5.h>
 
 /* Additional structures needed for NGINX build */
 typedef struct {
@@ -120,6 +131,11 @@ ngx_int_t ngx_http_sayplease_init_cache(void);
 ngx_int_t ngx_http_sayplease_cache_lookup(u_char *fingerprint, ngx_int_t *found);
 ngx_int_t ngx_http_sayplease_cache_insert(u_char *fingerprint);
 ngx_int_t ngx_http_sayplease_generate_content(ngx_str_t *url, u_char **content, size_t *content_len);
+
+/* MD5 function declarations for testing */
+void ngx_md5_init(ngx_md5_t *ctx);
+void ngx_md5_update(ngx_md5_t *ctx, const void *data, size_t size);
+void ngx_md5_final(u_char *result, ngx_md5_t *ctx);
 
 /* Nginx function declarations for testing */
 ngx_pool_t *ngx_create_pool(size_t size);

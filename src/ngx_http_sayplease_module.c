@@ -1,7 +1,10 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
-#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>  /* For stat() */
 
 #ifdef SAYPLEASE_USE_DUCKDB
 #include <duckdb.h>
@@ -19,7 +22,7 @@ static char *ngx_http_sayplease_init_main_conf(ngx_conf_t *cf, void *conf);
 static ngx_int_t ngx_http_sayplease_init(ngx_conf_t *cf);
 static ngx_int_t ngx_http_sayplease_handler(ngx_http_request_t *r);
 static void ngx_http_sayplease_cleanup_db(void *data);
-static void ngx_http_sayplease_cache_cleanup(ngx_http_sayplease_main_conf_t *mcf);
+static void ngx_http_sayplease_cache_cleanup(ngx_http_sayplease_main_conf_t *mcf) __attribute__((unused));
 static u_char *ngx_http_sayplease_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs);
 static u_char *ngx_http_sayplease_generate_random_text(ngx_pool_t *pool, ngx_uint_t words);
 static ngx_str_t *ngx_http_sayplease_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url);
@@ -261,7 +264,12 @@ ngx_http_sayplease_handler(ngx_http_request_t *r)
 
     // Check if URL matches any disallow pattern
     for (i = 0; i < mcf->robot_entries->nelts; i++) {
-        pattern = &patterns[i].disallow;
+        ngx_str_t *pattern;
+        ngx_http_sayplease_robot_entry_t *entry;
+        
+        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
+        pattern = entry[i].disallow->elts;
+
         if (ngx_strncmp(r->uri.data, pattern->data, pattern->len) == 0) {
             matched_pattern = *pattern;
             break;
@@ -284,7 +292,8 @@ ngx_http_sayplease_handler(ngx_http_request_t *r)
     // Check cache first
     if (ngx_http_sayplease_cache_lookup(mcf, fingerprint) == NGX_OK) {
         // Return cached response
-        content = ngx_http_sayplease_generate_content(r->pool, &r->uri, mcf->robot_entries->elts[i].disallow);
+        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
+        content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
         if (content == NULL) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
@@ -302,7 +311,8 @@ ngx_http_sayplease_handler(ngx_http_request_t *r)
         ngx_http_sayplease_cache_insert(mcf, fingerprint);
 
         // Generate new content
-        content = ngx_http_sayplease_generate_content(r->pool, &r->uri, mcf->robot_entries->elts[i].disallow);
+        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
+        content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
         if (content == NULL) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
@@ -352,7 +362,12 @@ ngx_http_sayplease_load_robots(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *r
     file.fd = fd;
     file.name = *robots_path;
 
-    size = ngx_file_size(&file);
+    struct stat sb;
+    if (stat((const char *)robots_path->data, &sb) == -1) {
+        return NGX_ERROR;
+    }
+    size = sb.st_size;
+
     buf = ngx_palloc(mcf->cache_pool, size + 1);
     if (buf == NULL) {
         ngx_close_file(fd);
@@ -709,6 +724,9 @@ static void ngx_http_sayplease_cleanup_db(void *data)
 }
 
 /* Helper function to convert char* to ngx_str_t */
+static ngx_str_t *
+ngx_http_sayplease_str_create(ngx_pool_t *pool, const char *src) __attribute__((unused));
+
 static ngx_str_t *
 ngx_http_sayplease_str_create(ngx_pool_t *pool, const char *src)
 {
