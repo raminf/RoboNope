@@ -259,14 +259,14 @@ configure-nginx: download build-pcre build-openssl
 	@echo "Configuring nginx with SayPlease module..."
 	cd $(NGINX_SRC) && \
 	if [ "$(DB_ENGINE)" = "duckdb" ]; then \
-		SAYPLEASE_USE_DUCKDB=1 ./configure --add-module=../../src \
+		SAYPLEASE_USE_DUCKDB=1 ./configure --add-dynamic-module=../../src \
 			--with-compat \
 			--with-threads \
 			--with-http_ssl_module \
 			--with-pcre=../../$(PCRE_SRC) \
 			--with-openssl=../../$(OPENSSL_SRC); \
 	else \
-		./configure --add-module=../../src \
+		./configure --add-dynamic-module=../../src \
 			--with-compat \
 			--with-threads \
 			--with-http_ssl_module \
@@ -282,6 +282,14 @@ build: configure-nginx
 	fi
 	@echo "Building nginx with SayPlease module..."
 	cd $(NGINX_SRC) && make modules
+	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
+		echo "Module was not built correctly. Trying explicit build..."; \
+		cd $(NGINX_SRC) && make -f objs/Makefile ngx_http_sayplease_module.so; \
+	fi
+	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
+		echo "ERROR: Failed to build module. Check build logs for errors."; \
+		exit 1; \
+	fi
 
 # Check dependencies
 check-deps:
@@ -490,6 +498,8 @@ demo:
 # Create a standalone distribution package
 release: build
 	@echo "Creating standalone distribution package..."
+	@echo "Checking for module file: $(MODULE_OUTPUT)"
+	@ls -la $(NGINX_SRC)/objs/ || echo "Cannot list directory contents"
 	@mkdir -p $(RELEASE_DIR)/bin
 	@mkdir -p $(RELEASE_DIR)/conf
 	@mkdir -p $(RELEASE_DIR)/examples
