@@ -9,7 +9,7 @@
 
 `SayPlease` is an Nginx module designed to handle requests that match patterns in robots.txt Disallow entries. It serves randomly generated content to bots that ignore robots.txt rules and tracks these violations.
 
-If a bot spidering your website ignores the `robots.txt` file, they will find themselves in a [https://en.wikipedia.org/wiki/Colossal_Cave_Adventure](Maze of Twisty Little Passages).
+If a bot spidering your website ignores the `robots.txt` file, they will find themselves in a [Maze of Twisty Little Passages](https://en.wikipedia.org/wiki/Colossal_Cave_Adventure).
 
 ## Features
 
