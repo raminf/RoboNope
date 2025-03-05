@@ -32,7 +32,7 @@ If a bot spidering your website ignores the `robots.txt` file, they will find th
 
 1. Clone this repository with submodules:
    ```
-   git clone --recursive https://github.com/yourusername/sayplease.git
+   git clone --recursive https://github.com/raminf/sayplease.git
    cd sayplease
    ```
 
@@ -100,7 +100,7 @@ The demo:
 
 If you want to install the module on an existing Nginx installation without building from source:
 
-1. Download the latest release package from the [Releases](https://github.com/yourusername/sayplease/releases) page
+1. Download the latest release package from the [Releases](https://github.com/raminf/sayplease/releases) page
 2. Extract the package: `tar -xzf sayplease-module-*.tar.gz`
 3. Run the installation script: `./install.sh`
 4. Add the module to your Nginx configuration: `load_module modules/ngx_http_sayplease_module.so;`
