@@ -1,0 +1,40 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget
+    
+    - name: Check dependencies
+      run: make check-deps
+    
+    - name: Build module
+      run: make all
+    
+    - name: Run tests
+      run: make test
+    
+    - name: Create release package
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: make release
+    
+    - name: Upload release artifact
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: actions/upload-artifact@v3
+      with:
+        name: sayplease-module
+        path: sayplease-module-*.tar.gz
+        retention-days: 7 

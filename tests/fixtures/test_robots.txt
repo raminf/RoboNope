@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+Disallow: /norobots/
+Disallow: /private/
+Disallow: /admin/
+
+User-agent: Googlebot
+Allow: /public/
+Disallow: /norobots/
+Disallow: /private/
+Disallow: /admin/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /norobots/
+Disallow: /private/
+Disallow: /admin/
+
+User-agent: TestBot
+Allow: /public/
+Allow: /test/
+Disallow: /norobots/
+Disallow: /private/ 
