@@ -384,7 +384,7 @@ test: test-sayplease-only
 
 # This target builds dependencies and runs all tests
 test-unit-only: prepare-test-deps
-	$(TEST_CC) $(TEST_CFLAGS) -c -o build/unity/unity.o deps/unity/src/unity.c
+	$(TEST_CC) $(TEST_CFLAGS) -c -o build/unity/unity.o deps/Unity/src/unity.c
 	$(TEST_CC) $(TEST_CFLAGS) -o tests/unit/test_unit tests/unit/test_unit.c src/ngx_http_sayplease_module_test.c src/ngx_mock.c build/unity/unity.o $(TEST_LIBS)
 	@if [ "$(OS)" = "Darwin" ]; then \
 		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" tests/unit/test_unit; \
@@ -401,7 +401,7 @@ prepare-test-deps: download build-pcre build-openssl build-unity configure-nginx
 # This target only runs the SayPlease module tests without building dependencies
 test-sayplease-only:
 	mkdir -p build/unity
-	$(TEST_CC) $(TEST_CFLAGS) -c -o build/unity/unity.o deps/unity/src/unity.c
+	$(TEST_CC) $(TEST_CFLAGS) -c -o build/unity/unity.o deps/Unity/src/unity.c
 	$(TEST_CC) $(TEST_CFLAGS) -o tests/unit/test_sayplease tests/unit/test_sayplease.c src/ngx_http_sayplease_module_test.c src/ngx_mock.c build/unity/unity.o $(TEST_LIBS)
 	@if [ "$(OS)" = "Darwin" ]; then \
 		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" tests/unit/test_sayplease; \
