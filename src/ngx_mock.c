@@ -1,6 +1,24 @@
 #include <stdlib.h>
 #include <string.h>
-#include "ngx_http_sayplease_module.h"
+#include "ngx_http_robonope_module.h"
+
+/* Mock structure definitions */
+typedef unsigned int ngx_uint_t;
+
+typedef struct ngx_pool_s {
+    void *last;
+    void *end;
+    struct ngx_pool_s *next;
+    void *failed;
+} ngx_pool_t;
+
+typedef struct {
+    void        *elts;
+    ngx_uint_t   nelts;
+    size_t       size;
+    ngx_uint_t   nalloc;
+    ngx_pool_t  *pool;
+} ngx_array_t;
 
 /* Mock implementations of Nginx functions */
 

@@ -23,7 +23,7 @@ worker_processes 1;
 error_log /dev/stderr debug;
 pid nginx.pid;
 
-load_module modules/ngx_http_sayplease_module.so;
+load_module modules/ngx_http_robonope_module.so;
 
 events {
     worker_connections 1024;
@@ -32,12 +32,12 @@ events {
 http {
     access_log /dev/stdout combined;
 
-    sayplease_enable on;
-    sayplease_robots_path $PWD/$ROBOTS_FILE;
-    sayplease_db_path $PWD/$DB_FILE;
-    sayplease_dynamic_content on;
-    sayplease_cache_ttl 3600;
-    sayplease_use_lorem_ipsum on;
+    robonope_enable on;
+    robonope_robots_path $PWD/$ROBOTS_FILE;
+    robonope_db_path $PWD/$DB_FILE;
+    robonope_dynamic_content on;
+    robonope_cache_ttl 3600;
+    robonope_use_lorem_ipsum on;
 
     server {
         listen $TEST_PORT;
@@ -49,7 +49,7 @@ http {
         }
 
         location /norobots/ {
-            sayplease_enable on;
+            robonope_enable on;
         }
     }
 }

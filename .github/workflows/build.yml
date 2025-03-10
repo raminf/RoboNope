@@ -37,6 +37,6 @@ jobs:
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       uses: actions/upload-artifact@v4
       with:
-        name: sayplease-module
-        path: sayplease-module-*.tar.gz
+        name: robonope-module
+        path: robonope-module-*.tar.gz
         retention-days: 7 

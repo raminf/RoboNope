@@ -22,19 +22,19 @@ release/
 # Demo artifacts
 demo/logs/
 demo/response.html
-demo/sayplease.db
+demo/robonope.db
 demo/nginx.conf
 demo/*.bak
 
 # Distribution packages
-sayplease-module-*.tar.gz
+robonope-module-*.tar.gz
 *.tar.gz
 *.zip
 *.deb
 *.rpm
 
 # Test artifacts
-tests/unit/test_sayplease
+tests/unit/test_robonope
 tests/unit/test_unit
 tests/integration/www/
 tests/integration/nginx_test.conf

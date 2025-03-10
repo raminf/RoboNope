@@ -6,119 +6,119 @@
 #include <string.h>
 #include <sys/stat.h>  /* For stat() */
 
-#ifdef SAYPLEASE_USE_DUCKDB
+#ifdef ROBONOPE_USE_DUCKDB
 #include <duckdb.h>
 #else
 #include <sqlite3.h>
 #endif
 
-#include "ngx_http_sayplease_module.h"
+#include "ngx_http_robonope_module.h"
 
 // Function declarations for internal use only
-static void *ngx_http_sayplease_create_loc_conf(ngx_conf_t *cf);
-static char *ngx_http_sayplease_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
-static void *ngx_http_sayplease_create_main_conf(ngx_conf_t *cf);
-static char *ngx_http_sayplease_init_main_conf(ngx_conf_t *cf, void *conf);
-static ngx_int_t ngx_http_sayplease_init(ngx_conf_t *cf);
-static ngx_int_t ngx_http_sayplease_handler(ngx_http_request_t *r);
-static void ngx_http_sayplease_cleanup_db(void *data);
-static void ngx_http_sayplease_cache_cleanup(ngx_http_sayplease_main_conf_t *mcf) __attribute__((unused));
-static u_char *ngx_http_sayplease_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs);
-static u_char *ngx_http_sayplease_generate_random_text(ngx_pool_t *pool, ngx_uint_t words);
-static ngx_str_t *ngx_http_sayplease_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url);
-static ngx_int_t ngx_http_sayplease_send_response(ngx_http_request_t *r, u_char *content);
+static void *ngx_http_robonope_create_loc_conf(ngx_conf_t *cf);
+static char *ngx_http_robonope_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
+static void *ngx_http_robonope_create_main_conf(ngx_conf_t *cf);
+static char *ngx_http_robonope_init_main_conf(ngx_conf_t *cf, void *conf);
+static ngx_int_t ngx_http_robonope_init(ngx_conf_t *cf);
+static ngx_int_t ngx_http_robonope_handler(ngx_http_request_t *r);
+static void ngx_http_robonope_cleanup_db(void *data);
+static void ngx_http_robonope_cache_cleanup(ngx_http_robonope_main_conf_t *mcf) __attribute__((unused));
+static u_char *ngx_http_robonope_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs);
+static u_char *ngx_http_robonope_generate_random_text(ngx_pool_t *pool, ngx_uint_t words);
+static ngx_str_t *ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url);
+static ngx_int_t ngx_http_robonope_send_response(ngx_http_request_t *r, u_char *content);
 
-static ngx_command_t ngx_http_sayplease_commands[] = {
+static ngx_command_t ngx_http_robonope_commands[] = {
     {
-        ngx_string("sayplease_enable"),
+        ngx_string("robonope_enable"),
         NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
         ngx_conf_set_flag_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, enable),
+        offsetof(ngx_http_robonope_loc_conf_t, enable),
         NULL
     },
     {
-        ngx_string("sayplease_robots_path"),
+        ngx_string("robonope_robots_path"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
         ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, robots_path),
+        offsetof(ngx_http_robonope_loc_conf_t, robots_path),
         NULL
     },
     {
-        ngx_string("sayplease_db_path"),
+        ngx_string("robonope_db_path"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
         ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, db_path),
+        offsetof(ngx_http_robonope_loc_conf_t, db_path),
         NULL
     },
     {
-        ngx_string("sayplease_static_content_path"),
+        ngx_string("robonope_static_content_path"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
         ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, static_content_path),
+        offsetof(ngx_http_robonope_loc_conf_t, static_content_path),
         NULL
     },
     {
-        ngx_string("sayplease_dynamic_content"),
+        ngx_string("robonope_dynamic_content"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
         ngx_conf_set_flag_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, dynamic_content),
+        offsetof(ngx_http_robonope_loc_conf_t, dynamic_content),
         NULL
     },
     {
-        ngx_string("sayplease_cache_ttl"),
+        ngx_string("robonope_cache_ttl"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
         ngx_conf_set_num_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, cache_ttl),
+        offsetof(ngx_http_robonope_loc_conf_t, cache_ttl),
         NULL
     },
     {
-        ngx_string("sayplease_max_cache_entries"),
+        ngx_string("robonope_max_cache_entries"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
         ngx_conf_set_num_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, max_cache_entries),
+        offsetof(ngx_http_robonope_loc_conf_t, max_cache_entries),
         NULL
     },
     {
-        ngx_string("sayplease_honeypot_class"),
+        ngx_string("robonope_honeypot_class"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
         ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, honeypot_class),
+        offsetof(ngx_http_robonope_loc_conf_t, honeypot_class),
         NULL
     },
     {
-        ngx_string("sayplease_use_lorem_ipsum"),
+        ngx_string("robonope_use_lorem_ipsum"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_FLAG,
         ngx_conf_set_flag_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_sayplease_loc_conf_t, use_lorem_ipsum),
+        offsetof(ngx_http_robonope_loc_conf_t, use_lorem_ipsum),
         NULL
     },
     ngx_null_command
 };
 
-static ngx_http_module_t ngx_http_sayplease_module_ctx = {
+static ngx_http_module_t ngx_http_robonope_module_ctx = {
     NULL,                                  /* preconfiguration */
-    ngx_http_sayplease_init,              /* postconfiguration */
-    ngx_http_sayplease_create_main_conf,  /* create main configuration */
-    ngx_http_sayplease_init_main_conf,    /* init main configuration */
+    ngx_http_robonope_init,              /* postconfiguration */
+    ngx_http_robonope_create_main_conf,  /* create main configuration */
+    ngx_http_robonope_init_main_conf,    /* init main configuration */
     NULL,                                  /* create server configuration */
     NULL,                                  /* merge server configuration */
-    ngx_http_sayplease_create_loc_conf,   /* create location configuration */
-    ngx_http_sayplease_merge_loc_conf     /* merge location configuration */
+    ngx_http_robonope_create_loc_conf,   /* create location configuration */
+    ngx_http_robonope_merge_loc_conf     /* merge location configuration */
 };
 
-ngx_module_t ngx_http_sayplease_module = {
+ngx_module_t ngx_http_robonope_module = {
     NGX_MODULE_V1,
-    &ngx_http_sayplease_module_ctx,    /* module context */
-    ngx_http_sayplease_commands,       /* module directives */
+    &ngx_http_robonope_module_ctx,    /* module context */
+    ngx_http_robonope_commands,       /* module directives */
     NGX_HTTP_MODULE,                   /* module type */
     NULL,                              /* init master */
     NULL,                              /* init module */
@@ -131,16 +131,16 @@ ngx_module_t ngx_http_sayplease_module = {
 };
 
 static void *
-ngx_http_sayplease_create_main_conf(ngx_conf_t *cf)
+ngx_http_robonope_create_main_conf(ngx_conf_t *cf)
 {
-    ngx_http_sayplease_main_conf_t *mcf;
+    ngx_http_robonope_main_conf_t *mcf;
 
-    mcf = ngx_pcalloc(cf->pool, sizeof(ngx_http_sayplease_main_conf_t));
+    mcf = ngx_pcalloc(cf->pool, sizeof(ngx_http_robonope_main_conf_t));
     if (mcf == NULL) {
         return NULL;
     }
 
-    mcf->robot_entries = ngx_array_create(cf->pool, 10, sizeof(ngx_http_sayplease_robot_entry_t));
+    mcf->robot_entries = ngx_array_create(cf->pool, 10, sizeof(ngx_http_robonope_robot_entry_t));
     if (mcf->robot_entries == NULL) {
         return NULL;
     }
@@ -149,19 +149,19 @@ ngx_http_sayplease_create_main_conf(ngx_conf_t *cf)
 }
 
 static char *
-ngx_http_sayplease_init_main_conf(ngx_conf_t *cf, void *conf)
+ngx_http_robonope_init_main_conf(ngx_conf_t *cf, void *conf)
 {
-    ngx_http_sayplease_main_conf_t *mcf = conf;
-    ngx_http_sayplease_loc_conf_t *lcf;
+    ngx_http_robonope_main_conf_t *mcf = conf;
+    ngx_http_robonope_loc_conf_t *lcf;
 
-    lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_sayplease_module);
+    lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_robonope_module);
     
-    if (ngx_http_sayplease_load_robots(mcf, &lcf->robots_path) != NGX_OK) {
+    if (ngx_http_robonope_load_robots(mcf, &lcf->robots_path) != NGX_OK) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "failed to load robots.txt");
         return NGX_CONF_ERROR;
     }
 
-    if (ngx_http_sayplease_init_db(mcf, &lcf->db_path) != NGX_OK) {
+    if (ngx_http_robonope_init_db(mcf, &lcf->db_path) != NGX_OK) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "failed to initialize database");
         return NGX_CONF_ERROR;
     }
@@ -170,11 +170,11 @@ ngx_http_sayplease_init_main_conf(ngx_conf_t *cf, void *conf)
 }
 
 static void *
-ngx_http_sayplease_create_loc_conf(ngx_conf_t *cf)
+ngx_http_robonope_create_loc_conf(ngx_conf_t *cf)
 {
-    ngx_http_sayplease_loc_conf_t *conf;
+    ngx_http_robonope_loc_conf_t *conf;
 
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_sayplease_loc_conf_t));
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_robonope_loc_conf_t));
     if (conf == NULL) {
         return NULL;
     }
@@ -189,18 +189,18 @@ ngx_http_sayplease_create_loc_conf(ngx_conf_t *cf)
 }
 
 static char *
-ngx_http_sayplease_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
+ngx_http_robonope_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 {
-    ngx_http_sayplease_loc_conf_t *prev = parent;
-    ngx_http_sayplease_loc_conf_t *conf = child;
+    ngx_http_robonope_loc_conf_t *prev = parent;
+    ngx_http_robonope_loc_conf_t *conf = child;
 
     ngx_conf_merge_value(conf->enable, prev->enable, 0);
     ngx_conf_merge_value(conf->dynamic_content, prev->dynamic_content, 1);
     ngx_conf_merge_str_value(conf->robots_path, prev->robots_path, "/etc/nginx/robots.txt");
-    ngx_conf_merge_str_value(conf->db_path, prev->db_path, "/var/lib/nginx/sayplease.db");
-    ngx_conf_merge_str_value(conf->static_content_path, prev->static_content_path, "/etc/nginx/sayplease_static");
+    ngx_conf_merge_str_value(conf->db_path, prev->db_path, "/var/lib/nginx/robonope.db");
+    ngx_conf_merge_str_value(conf->static_content_path, prev->static_content_path, "/etc/nginx/robonope_static");
     ngx_conf_merge_uint_value(conf->cache_ttl, prev->cache_ttl, 3600);
-    ngx_conf_merge_uint_value(conf->max_cache_entries, prev->max_cache_entries, NGX_HTTP_SAYPLEASE_MAX_CACHE);
+    ngx_conf_merge_uint_value(conf->max_cache_entries, prev->max_cache_entries, NGX_HTTP_ROBONOPE_MAX_CACHE);
     ngx_conf_merge_str_value(conf->honeypot_class, prev->honeypot_class, "honeypot");
     ngx_conf_merge_value(conf->use_lorem_ipsum, prev->use_lorem_ipsum, 1);
 
@@ -208,25 +208,25 @@ ngx_http_sayplease_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 }
 
 static ngx_int_t
-ngx_http_sayplease_init(ngx_conf_t *cf)
+ngx_http_robonope_init(ngx_conf_t *cf)
 {
     ngx_http_handler_pt *h;
     ngx_http_core_main_conf_t *cmcf;
     ngx_pool_cleanup_t *cln;
-    ngx_http_sayplease_main_conf_t *mcf;
+    ngx_http_robonope_main_conf_t *mcf;
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-    mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_sayplease_module);
+    mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_robonope_module);
 
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
 
-    *h = ngx_http_sayplease_handler;
+    *h = ngx_http_robonope_handler;
 
     // Initialize cache
-    if (ngx_http_sayplease_init_cache(mcf) != NGX_OK) {
+    if (ngx_http_robonope_init_cache(mcf) != NGX_OK) {
         return NGX_ERROR;
     }
 
@@ -236,27 +236,27 @@ ngx_http_sayplease_init(ngx_conf_t *cf)
         return NGX_ERROR;
     }
 
-    cln->handler = ngx_http_sayplease_cleanup_db;
+    cln->handler = ngx_http_robonope_cleanup_db;
     cln->data = mcf;
 
     return NGX_OK;
 }
 
 static ngx_int_t
-ngx_http_sayplease_handler(ngx_http_request_t *r)
+ngx_http_robonope_handler(ngx_http_request_t *r)
 {
-    ngx_http_sayplease_main_conf_t *mcf;
-    ngx_http_sayplease_loc_conf_t *lcf;
+    ngx_http_robonope_main_conf_t *mcf;
+    ngx_http_robonope_loc_conf_t *lcf;
     ngx_str_t matched_pattern;
     ngx_uint_t i;
     u_char *content;
     u_char fingerprint[16];
-    ngx_http_sayplease_robot_entry_t *entry;
+    ngx_http_robonope_robot_entry_t *entry;
     ngx_str_t *pattern;
     
     // Get module configuration
-    mcf = ngx_http_get_module_main_conf(r, ngx_http_sayplease_module);
-    lcf = ngx_http_get_module_loc_conf(r, ngx_http_sayplease_module);
+    mcf = ngx_http_get_module_main_conf(r, ngx_http_robonope_module);
+    lcf = ngx_http_get_module_loc_conf(r, ngx_http_robonope_module);
     
     if (!lcf->enable) {
         return NGX_DECLINED;
@@ -264,7 +264,7 @@ ngx_http_sayplease_handler(ngx_http_request_t *r)
     
     // Check if URL matches any disallow pattern
     for (i = 0; i < mcf->robot_entries->nelts; i++) {
-        entry = (ngx_http_sayplease_robot_entry_t *)mcf->robot_entries->elts;
+        entry = (ngx_http_robonope_robot_entry_t *)mcf->robot_entries->elts;
         
         // Skip if no disallow patterns
         if (entry[i].disallow == NULL || entry[i].disallow->nelts == 0) {
@@ -286,41 +286,41 @@ ngx_http_sayplease_handler(ngx_http_request_t *r)
                 ngx_md5_final(fingerprint, &md5);
                 
                 // Check if client is already in cache
-                if (ngx_http_sayplease_cache_lookup(mcf, fingerprint) == NGX_OK) {
+                if (ngx_http_robonope_cache_lookup(mcf, fingerprint) == NGX_OK) {
                     // Return cached response
-                    content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
+                    content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry[i].disallow);
                     if (content == NULL) {
                         return NGX_HTTP_INTERNAL_SERVER_ERROR;
                     }
                     
                     // Log request
-                    ngx_http_sayplease_log_request(
+                    ngx_http_robonope_log_request(
                         mcf->db,
                         r,
                         &matched_pattern
                     );
                     
                     // Send response
-                    return ngx_http_sayplease_send_response(r, content);
+                    return ngx_http_robonope_send_response(r, content);
                 } else {
                     // Add client to cache
-                    ngx_http_sayplease_cache_insert(mcf, fingerprint);
+                    ngx_http_robonope_cache_insert(mcf, fingerprint);
                     
                     // Generate new content
-                    content = ngx_http_sayplease_generate_content(r->pool, &r->uri, entry[i].disallow);
+                    content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry[i].disallow);
                     if (content == NULL) {
                         return NGX_HTTP_INTERNAL_SERVER_ERROR;
                     }
                     
                     // Log request
-                    ngx_http_sayplease_log_request(
+                    ngx_http_robonope_log_request(
                         mcf->db,
                         r,
                         &matched_pattern
                     );
                     
                     // Send response
-                    return ngx_http_sayplease_send_response(r, content);
+                    return ngx_http_robonope_send_response(r, content);
                 }
             }
         }
@@ -331,12 +331,12 @@ ngx_http_sayplease_handler(ngx_http_request_t *r)
 }
 
 static ngx_int_t
-ngx_http_sayplease_load_robots(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *robots_path)
+ngx_http_robonope_load_robots(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *robots_path)
 {
     ngx_fd_t fd;
     ngx_file_t file;
     char *buf, *line, *directive, *value;
-    ngx_http_sayplease_robot_entry_t *entry = NULL;
+    ngx_http_robonope_robot_entry_t *entry = NULL;
     size_t size;
     ssize_t n;
 
@@ -432,9 +432,9 @@ ngx_http_sayplease_load_robots(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *r
 }
 
 static ngx_int_t
-ngx_http_sayplease_init_db(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *db_path)
+ngx_http_robonope_init_db(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *db_path)
 {
-#ifdef SAYPLEASE_USE_DUCKDB
+#ifdef ROBONOPE_USE_DUCKDB
     if (duckdb_open((char *)db_path->data, &mcf->db) != DuckDBSuccess) {
         return NGX_ERROR;
     }
@@ -488,7 +488,7 @@ ngx_http_sayplease_init_db(ngx_http_sayplease_main_conf_t *mcf, ngx_str_t *db_pa
 }
 
 static u_char *
-ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns)
+ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns)
 {
     /* We can't access the location configuration here, so we'll use default behavior */
     ngx_int_t use_lorem_ipsum = 1; /* Default to using Lorem Ipsum */
@@ -498,9 +498,9 @@ ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_
 
     // Generate body content
     if (use_lorem_ipsum) {
-        body = ngx_http_sayplease_generate_lorem_ipsum(pool, 3);
+        body = ngx_http_robonope_generate_lorem_ipsum(pool, 3);
     } else {
-        body = ngx_http_sayplease_generate_random_text(pool, 100);
+        body = ngx_http_robonope_generate_random_text(pool, 100);
     }
 
     if (body == NULL) {
@@ -508,7 +508,7 @@ ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_
     }
 
     // Generate honeypot link
-    honeypot_link = ngx_http_sayplease_generate_honeypot_link(pool, url);
+    honeypot_link = ngx_http_robonope_generate_honeypot_link(pool, url);
     if (honeypot_link == NULL) {
         return NULL;
     }
@@ -543,8 +543,8 @@ ngx_http_sayplease_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_
 }
 
 static ngx_int_t
-ngx_http_sayplease_log_request(
-#ifdef SAYPLEASE_USE_DUCKDB
+ngx_http_robonope_log_request(
+#ifdef ROBONOPE_USE_DUCKDB
     duckdb_connection conn,
 #else
     sqlite3 *db,
@@ -556,7 +556,7 @@ ngx_http_sayplease_log_request(
     ip.data = r->connection->addr_text.data;
     ip.len = r->connection->addr_text.len;
 
-#ifdef SAYPLEASE_USE_DUCKDB
+#ifdef ROBONOPE_USE_DUCKDB
     char *sql = ngx_sprintf("INSERT INTO requests (ip, user_agent, url, matched_pattern) "
                            "VALUES ('%s', '%s', '%s', '%s');",
                            ip.data,
@@ -594,7 +594,7 @@ ngx_http_sayplease_log_request(
 }
 
 static u_char *
-ngx_http_sayplease_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs)
+ngx_http_robonope_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs)
 {
     static const char *lorem_paragraphs[] = {
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
@@ -627,7 +627,7 @@ ngx_http_sayplease_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs)
 }
 
 static u_char *
-ngx_http_sayplease_generate_random_text(ngx_pool_t *pool, ngx_uint_t words)
+ngx_http_robonope_generate_random_text(ngx_pool_t *pool, ngx_uint_t words)
 {
     static const char *word_list[] = {
         "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
@@ -654,7 +654,7 @@ ngx_http_sayplease_generate_random_text(ngx_pool_t *pool, ngx_uint_t words)
 }
 
 static ngx_str_t *
-ngx_http_sayplease_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url)
+ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url)
 {
     ngx_str_t *link;
     u_char *p;
@@ -687,39 +687,39 @@ ngx_http_sayplease_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url)
     return link;
 }
 
-static ngx_int_t ngx_http_sayplease_init_cache(ngx_http_sayplease_main_conf_t *mcf)
+static ngx_int_t ngx_http_robonope_init_cache(ngx_http_robonope_main_conf_t *mcf)
 {
-    // Implementation of ngx_http_sayplease_init_cache function
+    // Implementation of ngx_http_robonope_init_cache function
     return NGX_OK; // Placeholder return, actual implementation needed
 }
 
-static ngx_int_t ngx_http_sayplease_cache_lookup(ngx_http_sayplease_main_conf_t *mcf, u_char *fingerprint)
+static ngx_int_t ngx_http_robonope_cache_lookup(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint)
 {
-    // Implementation of ngx_http_sayplease_cache_lookup function
+    // Implementation of ngx_http_robonope_cache_lookup function
     return NGX_OK; // Placeholder return, actual implementation needed
 }
 
-static void ngx_http_sayplease_cache_insert(ngx_http_sayplease_main_conf_t *mcf, u_char *fingerprint)
+static void ngx_http_robonope_cache_insert(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint)
 {
-    // Implementation of ngx_http_sayplease_cache_insert function
+    // Implementation of ngx_http_robonope_cache_insert function
 }
 
-static void ngx_http_sayplease_cache_cleanup(ngx_http_sayplease_main_conf_t *mcf)
+static void ngx_http_robonope_cache_cleanup(ngx_http_robonope_main_conf_t *mcf)
 {
-    // Implementation of ngx_http_sayplease_cache_cleanup function
+    // Implementation of ngx_http_robonope_cache_cleanup function
 }
 
-static void ngx_http_sayplease_cleanup_db(void *data)
+static void ngx_http_robonope_cleanup_db(void *data)
 {
-    // Implementation of ngx_http_sayplease_cleanup_db function
+    // Implementation of ngx_http_robonope_cleanup_db function
 }
 
 /* Helper function to convert char* to ngx_str_t */
 static ngx_str_t *
-ngx_http_sayplease_str_create(ngx_pool_t *pool, const char *src) __attribute__((unused));
+ngx_http_robonope_str_create(ngx_pool_t *pool, const char *src) __attribute__((unused));
 
 static ngx_str_t *
-ngx_http_sayplease_str_create(ngx_pool_t *pool, const char *src)
+ngx_http_robonope_str_create(ngx_pool_t *pool, const char *src)
 {
     ngx_str_t *dst;
     size_t len;
@@ -742,7 +742,7 @@ ngx_http_sayplease_str_create(ngx_pool_t *pool, const char *src)
 }
 
 static ngx_int_t
-ngx_http_sayplease_send_response(ngx_http_request_t *r, u_char *content)
+ngx_http_robonope_send_response(ngx_http_request_t *r, u_char *content)
 {
     ngx_buf_t *b;
     ngx_chain_t out;

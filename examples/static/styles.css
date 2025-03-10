@@ -1,4 +1,4 @@
-/* Main styles for SayPlease static example */
+/* Main styles for RoboNope static example */
 body {
     font-family: Arial, sans-serif;
     line-height: 1.6;
@@ -69,7 +69,7 @@ footer {
     display: none; /* Hide from regular users */
 }
 
-/* This class is used by the SayPlease module to identify honeypot elements */
+/* This class is used by the RoboNope module to identify honeypot elements */
 .honeypot {
     position: absolute;
     left: -9999px;

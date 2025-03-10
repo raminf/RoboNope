@@ -1,16 +1,16 @@
-# SayPlease Module Examples
+# RoboNope Module Examples
 
-This directory contains example files for use with the SayPlease NGINX module.
+This directory contains example files for use with the RoboNope NGINX module.
 
 ## Contents
 
 ### robots.txt
 
-An example `robots.txt` file that demonstrates how to set up disallow rules for bots. The SayPlease module will parse this file to determine which URLs should be protected.
+An example `robots.txt` file that demonstrates how to set up disallow rules for bots. The RoboNope module will parse this file to determine which URLs should be protected.
 
 Example usage in NGINX configuration:
 ```nginx
-sayplease_robots_path /path/to/examples/robots.txt;
+robonope_robots_path /path/to/examples/robots.txt;
 ```
 
 ### static/
@@ -19,8 +19,8 @@ This directory contains static HTML content that can be served to bots that igno
 
 Example usage in NGINX configuration:
 ```nginx
-sayplease_static_content_path /path/to/examples/static;
-sayplease_dynamic_content off;
+robonope_static_content_path /path/to/examples/static;
+robonope_dynamic_content off;
 ```
 
 #### Files in static/
@@ -38,18 +38,18 @@ sayplease_dynamic_content off;
 
 2. Update your NGINX configuration to point to these files:
    ```nginx
-   sayplease_enable on;
-   sayplease_robots_path /path/to/your/nginx/conf/examples/robots.txt;
-   sayplease_static_content_path /path/to/your/nginx/conf/examples/static;
+   robonope_enable on;
+   robonope_robots_path /path/to/your/nginx/conf/examples/robots.txt;
+   robonope_static_content_path /path/to/your/nginx/conf/examples/static;
    ```
 
 3. Choose whether to use static or dynamic content:
    ```nginx
    # For static content
-   sayplease_dynamic_content off;
+   robonope_dynamic_content off;
    
    # For dynamic content
-   sayplease_dynamic_content on;
+   robonope_dynamic_content on;
    ```
 
 4. Restart NGINX to apply the changes:
@@ -68,10 +68,10 @@ Feel free to modify these examples to suit your needs:
 
 ## Testing the Examples
 
-You can test how these examples work with the SayPlease module by using the included demo:
+You can test how these examples work with the RoboNope module by using the included demo:
 
 ```bash
-make demo URL=http://localhost:8080/secret.html
+make demo
 ```
 
-This will start a temporary NGINX instance with the SayPlease module configured to use these examples. 
+This will start a temporary NGINX instance with the RoboNope module configured to use these examples. 
