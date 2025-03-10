@@ -10,6 +10,17 @@ PCRE_SRC = $(BUILD_DIR)/pcre-$(PCRE_VERSION)
 OPENSSL_SRC = $(BUILD_DIR)/openssl-$(OPENSSL_VERSION)
 UNITY_SRC = deps/Unity
 
+# NGINX paths and configuration
+NGINX_SRC_DIR = $(NGINX_SRC)/src
+NGINX_OBJS_DIR = $(NGINX_SRC)/objs
+NGINX_INCS = -I$(NGINX_SRC_DIR)/core \
+             -I$(NGINX_SRC_DIR)/event \
+             -I$(NGINX_SRC_DIR)/event/modules \
+             -I$(NGINX_SRC_DIR)/os/unix \
+             -I$(NGINX_SRC_DIR)/http \
+             -I$(NGINX_SRC_DIR)/http/modules \
+             -I$(NGINX_OBJS_DIR)
+
 # Download files
 NGINX_TAR = nginx-$(NGINX_VERSION).tar.gz
 PCRE_TAR = pcre-$(PCRE_VERSION).tar.gz
@@ -76,13 +87,13 @@ endif
 
 # Test configuration
 TEST_CC = $(CC)
-TEST_CFLAGS = -I$(NGINX_SRC)/src/core \
-              -I$(NGINX_SRC)/src/event \
-              -I$(NGINX_SRC)/src/event/modules \
-              -I$(NGINX_SRC)/src/os/unix \
-              -I$(NGINX_SRC)/src/http \
-              -I$(NGINX_SRC)/src/http/modules \
-              -I$(NGINX_SRC)/objs \
+TEST_CFLAGS = -I$(NGINX_SRC_DIR)/core \
+              -I$(NGINX_SRC_DIR)/event \
+              -I$(NGINX_SRC_DIR)/event/modules \
+              -I$(NGINX_SRC_DIR)/os/unix \
+              -I$(NGINX_SRC_DIR)/http \
+              -I$(NGINX_SRC_DIR)/http/modules \
+              -I$(NGINX_OBJS_DIR) \
               -I./src \
               -I$(PCRE_SRC) \
               -I$(PCRE_SRC)/include \
@@ -141,7 +152,15 @@ MODULE_OUTPUT = $(NGINX_SRC)/objs/ngx_http_sayplease_module.so
 # Release directory
 RELEASE_DIR = release
 
-.PHONY: all clean download install test test-unit test-integration install-deps check-deps dist build test-only test-unit-only test-integration-only prepare-build prepare-test-deps test-sayplease-only help demo release
+# Demo configuration
+DEMO_PORT ?= 8080
+DEMO_DIR = $(BUILD_DIR)/demo
+DEMO_NGINX = $(NGINX_SRC)/objs/nginx
+DEMO_CONF = $(DEMO_DIR)/conf/nginx.conf
+DEMO_LOGS = $(DEMO_DIR)/logs
+DEMO_TEMP = $(DEMO_DIR)/temp
+
+.PHONY: all clean clean-demo download install test test-unit test-integration install-deps check-deps dist build test-only test-unit-only test-integration-only prepare-build prepare-test-deps test-sayplease-only help demo release generate-headers
 
 all: check-deps build
 
@@ -186,6 +205,9 @@ help:
 	@echo "  make DB_ENGINE=duckdb install-deps  - Install dependencies for DuckDB"
 	@echo "  make ARCH=arm64 all                 - Build for ARM64 architecture"
 	@echo "  make demo URL=http://localhost:8080/secret.html - Test with a specific URL"
+	@echo ""
+	@echo "Generating headers:"
+	@echo "  make generate-headers    - Generate NGINX headers"
 	@echo ""
 	@echo "Environment variables are automatically set for library paths."
 	@echo "Current settings:"
@@ -281,10 +303,10 @@ build: configure-nginx
 		exit 1; \
 	fi
 	@echo "Building nginx with SayPlease module..."
-	cd $(NGINX_SRC) && make modules
+	cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make modules
 	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
 		echo "Module was not built correctly. Trying explicit build..."; \
-		cd $(NGINX_SRC) && make -f objs/Makefile ngx_http_sayplease_module.so; \
+		cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make -f objs/Makefile ngx_http_sayplease_module.so; \
 	fi
 	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
 		echo "ERROR: Failed to build module. Check build logs for errors."; \
@@ -407,24 +429,47 @@ prepare-test-deps: download build-pcre build-openssl build-unity configure-nginx
 	@echo "Test dependencies prepared"
 
 # This target only runs the SayPlease module tests without building dependencies
-test-sayplease-only: build-unity
+test-sayplease-only: build-unity configure-nginx
 	mkdir -p build/unity
-	$(TEST_CC) $(TEST_CFLAGS) -c -o build/unity/unity.o deps/Unity/src/unity.c
-	$(TEST_CC) $(TEST_CFLAGS) -o tests/unit/test_sayplease tests/unit/test_sayplease.c src/ngx_http_sayplease_module_test.c src/ngx_mock.c build/unity/unity.o $(TEST_LIBS)
+	$(TEST_CC) $(TEST_CFLAGS) \
+		-DNGINX_PREFIX=\"$(NGINX_SRC_DIR)\" \
+		-c -o build/unity/unity.o deps/Unity/src/unity.c
+	$(TEST_CC) $(TEST_CFLAGS) \
+		-DNGINX_PREFIX=\"$(NGINX_SRC_DIR)\" \
+		-o tests/unit/test_sayplease \
+		tests/unit/test_sayplease.c \
+		src/ngx_http_sayplease_module_test.c \
+		src/ngx_mock.c \
+		build/unity/unity.o \
+		$(TEST_LIBS)
 	@if [ "$(OS)" = "Darwin" ]; then \
-		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" tests/unit/test_sayplease; \
+		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" \
+		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
+		tests/unit/test_sayplease; \
 	elif [ "$(OS)" = "Linux" ]; then \
-		LD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" tests/unit/test_sayplease; \
+		LD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" \
+		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
+		tests/unit/test_sayplease; \
 	else \
-		PATH="$(dir $(PCRE_LIB_PATH)):$$PATH" tests/unit/test_sayplease; \
+		PATH="$(dir $(PCRE_LIB_PATH)):$$PATH" \
+		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
+		tests/unit/test_sayplease; \
 	fi
 
 test-integration-only: build
 	chmod +x tests/integration/test_integration.sh
 	cd tests/integration && ./test_integration.sh
 
+# Generate NGINX headers
+generate-headers: configure-nginx
+	@echo "Generating NGINX headers..."
+	@if [ ! -d "$(NGINX_OBJS_DIR)" ]; then \
+		mkdir -p $(NGINX_OBJS_DIR); \
+	fi
+	@cd $(NGINX_SRC) && ./configure --with-compat
+
 # Clean up
-clean:
+clean: clean-demo
 	rm -rf $(BUILD_DIR)
 	rm -f tests/unit/test_sayplease
 	rm -f tests/integration/nginx_test.conf tests/integration/test.db
@@ -472,28 +517,48 @@ build-unity:
 	cd $(UNITY_SRC) && ar rcs build/libunity.a build/unity.o
 
 # Demo target to test the module with a specific URL
-demo:
+demo: build
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter is required. Usage: make demo URL=http://example.com/path"; \
 		exit 1; \
 	fi
-	@echo "Testing SayPlease module with URL: $(URL)"
-	@mkdir -p demo
-	@cp -f config/nginx.conf.example demo/nginx.conf
-	@sed -i.bak 's|/path/to/robots.txt|$(PWD)/examples/robots.txt|g' demo/nginx.conf
-	@sed -i.bak 's|/path/to/database|$(PWD)/demo/sayplease.db|g' demo/nginx.conf
-	@sed -i.bak 's|/path/to/static/content|$(PWD)/examples/static|g' demo/nginx.conf
-	@sed -i.bak 's|listen       80|listen       8080|g' demo/nginx.conf
-	@mkdir -p demo/logs
-	@echo "Starting nginx with SayPlease module..."
-	@nginx -c $(PWD)/demo/nginx.conf -p $(PWD)/demo
+	@echo "Setting up demo environment..."
+	@mkdir -p $(DEMO_DIR)/conf $(DEMO_LOGS) $(DEMO_TEMP)
+	@cp -f config/nginx.conf.example $(DEMO_CONF)
+	@sed -i.bak \
+		-e 's|/path/to/robots.txt|$(PWD)/examples/robots.txt|g' \
+		-e 's|/path/to/database|$(DEMO_DIR)/sayplease.db|g' \
+		-e 's|/path/to/static/content|$(PWD)/examples/static|g' \
+		-e 's|listen       80|listen       $(DEMO_PORT)|g' \
+		-e 's|error_log.*|error_log $(DEMO_LOGS)/error.log debug;|' \
+		-e 's|access_log.*|access_log $(DEMO_LOGS)/access.log combined;|' \
+		-e 's|pid.*|pid $(DEMO_TEMP)/nginx.pid;|' \
+		-e 's|user.*|user $(shell whoami);|' \
+		-e 's|load_module.*|load_module $(MODULE_OUTPUT);|' \
+		$(DEMO_CONF)
+	@echo "worker_processes 1;" > $(DEMO_CONF).tmp
+	@echo "events { worker_connections 1024; }" >> $(DEMO_CONF).tmp
+	@cat $(DEMO_CONF) >> $(DEMO_CONF).tmp
+	@mv $(DEMO_CONF).tmp $(DEMO_CONF)
+	@echo "Starting nginx with SayPlease module on port $(DEMO_PORT)..."
+	@$(DEMO_NGINX) -c $(DEMO_CONF) -p $(DEMO_DIR)
 	@echo "Sending request to $(URL)..."
-	@curl -A "Googlebot" -s "$(URL)" > demo/response.html
-	@echo "Response saved to demo/response.html"
+	@curl -A "Googlebot" -s "$(URL)" > $(DEMO_DIR)/response.html
+	@echo "Response saved to $(DEMO_DIR)/response.html"
 	@echo "Stopping nginx..."
-	@nginx -c $(PWD)/demo/nginx.conf -p $(PWD)/demo -s stop
-	@echo "Demo complete. Check demo/sayplease.db for bot tracking data."
-	@echo "To view the database: sqlite3 demo/sayplease.db 'SELECT * FROM bot_requests;'"
+	@$(DEMO_NGINX) -c $(DEMO_CONF) -p $(DEMO_DIR) -s stop
+	@echo "Demo complete. Check $(DEMO_DIR)/sayplease.db for bot tracking data."
+	@echo "To view the database: sqlite3 $(DEMO_DIR)/sayplease.db 'SELECT * FROM bot_requests;'"
+	@echo ""
+	@echo "Demo files are in $(DEMO_DIR):"
+	@echo "  - Configuration: $(DEMO_CONF)"
+	@echo "  - Logs: $(DEMO_LOGS)"
+	@echo "  - Response: $(DEMO_DIR)/response.html"
+	@echo "  - Database: $(DEMO_DIR)/sayplease.db"
+
+# Clean demo files
+clean-demo:
+	rm -rf $(DEMO_DIR)
 
 # Create a standalone distribution package
 release: build
