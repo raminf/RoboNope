@@ -154,411 +154,181 @@ RELEASE_DIR = release
 
 # Demo configuration
 DEMO_PORT ?= 8080
-DEMO_DIR = $(BUILD_DIR)/demo
+DEMO_DIR = build/demo
 DEMO_NGINX = $(NGINX_SRC)/objs/nginx
 DEMO_CONF = $(DEMO_DIR)/conf/nginx.conf
 DEMO_LOGS = $(DEMO_DIR)/logs
 DEMO_TEMP = $(DEMO_DIR)/temp
 
-.PHONY: all clean clean-demo download install test test-unit test-integration install-deps check-deps dist build test-only test-unit-only test-integration-only prepare-build prepare-test-deps test-robonope-only help demo release generate-headers
+# OpenSSL CFLAGS - disable -Werror and problematic warnings
+OPENSSL_CFLAGS = -Wno-missing-field-initializers -Wno-deprecated-declarations
+OPENSSL_CONFIG_FLAGS = no-shared no-async
 
-all: check-deps build
+# OpenSSL detection
+OPENSSL_MIN_VERSION = 1.1.1
 
-# Help target
-help:
-	@echo "RoboNope Nginx Module - Build System"
-	@echo "===================================="
-	@echo ""
-	@echo "Available targets:"
-	@echo ""
-	@echo "Building:"
-	@echo "  make                    - Check dependencies and build the module"
-	@echo "  make all                - Same as above"
-	@echo "  make build              - Build the module"
-	@echo "  make DB_ENGINE=duckdb all - Build with DuckDB instead of SQLite"
-	@echo "  make ARCH=arm64 all     - Build for ARM64 architecture"
-	@echo "  make ARCH=x86_64 all    - Build for x86_64 architecture"
-	@echo ""
-	@echo "Dependencies:"
-	@echo "  make download           - Download required dependencies"
-	@echo "  make install-deps       - Install system dependencies"
-	@echo "  make check-deps         - Check if all dependencies are satisfied"
-	@echo ""
-	@echo "Testing:"
-	@echo "  make test               - Run all tests"
-	@echo "  make test-robonope-only - Run RoboNope module tests"
-	@echo ""
-	@echo "Demo:"
-	@echo "  make demo URL=http://localhost:8080/path - Run a demo with the specified URL"
-	@echo ""
-	@echo "Distribution:"
-	@echo "  make release            - Create a standalone distribution package"
-	@echo "  make dist               - Create distribution package"
-	@echo ""
-	@echo "Installation:"
-	@echo "  make install            - Install the module"
-	@echo ""
-	@echo "Cleaning:"
-	@echo "  make clean              - Clean build artifacts"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make DB_ENGINE=duckdb install-deps  - Install dependencies for DuckDB"
-	@echo "  make ARCH=arm64 all                 - Build for ARM64 architecture"
-	@echo "  make demo URL=http://localhost:8080/secret.html - Test with a specific URL"
-	@echo ""
-	@echo "Generating headers:"
-	@echo "  make generate-headers    - Generate NGINX headers"
-	@echo ""
-	@echo "Environment variables are automatically set for library paths."
-	@echo "Current settings:"
-	@echo "  OS: $(OS)"
-	@echo "  Architecture: $(ARCH)"
-	@echo "  PCRE library: $(PCRE_LIB_PATH)"
-	@echo "  PCRE include: $(PCRE_INCLUDE_PATH)"
-	@echo "  Database engine: $(DB_ENGINE)"
-	@echo ""
+# Check for environment variables first
+ifdef OPENSSL_ROOT_DIR
+    _OPENSSL_ROOT = $(OPENSSL_ROOT_DIR)
+else ifdef OPENSSL_HOME
+    _OPENSSL_ROOT = $(OPENSSL_HOME)
+else ifdef OPENSSL_PATH
+    _OPENSSL_ROOT = $(OPENSSL_PATH)
+else
+    # Platform-specific OpenSSL detection if no environment variable is set
+    ifeq ($(OS),Darwin)
+        # macOS - Try Homebrew first, then system paths
+        _OPENSSL_ROOT = $(shell \
+            if command -v brew >/dev/null 2>&1; then \
+                brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || brew --prefix openssl@1.1 2>/dev/null || echo "/usr/local/opt/openssl"; \
+            else \
+                echo "/usr/local/opt/openssl"; \
+            fi)
+    else ifeq ($(findstring MINGW,$(OS)),MINGW)
+        # MinGW/MSYS2 detection
+        _OPENSSL_ROOT = $(shell cygpath -m "$$(dirname $$(which openssl.exe))/.." 2>/dev/null || echo "C:/msys64/mingw64")
+    else
+        # Linux and other Unix-like systems
+        _OPENSSL_ROOT = $(shell \
+            if pkg-config openssl --exists 2>/dev/null; then \
+                echo "$$(pkg-config --variable=prefix openssl)"; \
+            elif [ -d "/usr/local/openssl" ]; then \
+                echo "/usr/local/openssl"; \
+            elif [ -d "/usr/include/openssl" ]; then \
+                echo "/usr"; \
+            else \
+                echo "/usr/local"; \
+            fi)
+    endif
+endif
 
-# Create build directory
-prepare-build:
-	mkdir -p $(BUILD_DIR)
+# Validate OpenSSL path and get include/lib paths
+_OPENSSL_INCLUDE = $(shell \
+    if [ -f "$(_OPENSSL_ROOT)/include/openssl/ssl.h" ]; then \
+        echo "$(_OPENSSL_ROOT)/include"; \
+    fi)
 
-# Download and extract sources
-download: prepare-build
+_OPENSSL_LIB = $(shell \
+    if [ -f "$(_OPENSSL_ROOT)/lib/libssl.a" ] || [ -f "$(_OPENSSL_ROOT)/lib/libssl.so" ] || [ -f "$(_OPENSSL_ROOT)/lib/libssl.so.3" ] || [ -f "$(_OPENSSL_ROOT)/lib/libssl.3.dylib" ] || [ -f "$(_OPENSSL_ROOT)/lib/libssl.dylib" ]; then \
+        echo "$(_OPENSSL_ROOT)/lib"; \
+    elif [ -f "$(_OPENSSL_ROOT)/lib64/libssl.a" ] || [ -f "$(_OPENSSL_ROOT)/lib64/libssl.so" ] || [ -f "$(_OPENSSL_ROOT)/lib64/libssl.so.3" ]; then \
+        echo "$(_OPENSSL_ROOT)/lib64"; \
+    fi)
+
+# Get OpenSSL version
+_OPENSSL_VERSION = $(shell \
+    if [ -x "$(_OPENSSL_ROOT)/bin/openssl" ]; then \
+        $(_OPENSSL_ROOT)/bin/openssl version | cut -d' ' -f2; \
+    elif [ -f "$(_OPENSSL_ROOT)/include/openssl/opensslv.h" ]; then \
+        grep -E 'OPENSSL_VERSION_STR|OPENSSL_VERSION_TEXT' "$(_OPENSSL_ROOT)/include/openssl/opensslv.h" | head -n1 | cut -d'"' -f2 | cut -d' ' -f2; \
+    else \
+        echo "0.0.0"; \
+    fi)
+
+# Function to compare versions (returns yes if ver1 >= ver2)
+define check_version
+$(shell printf '%s\n%s\n' "$(1)" "$(2)" | sort -V | head -n1 | grep -q "^$(2)$$" && echo "yes" || echo "no")
+endef
+
+# Check if system OpenSSL is usable
+HAS_SYSTEM_OPENSSL = $(shell \
+    if [ -n "$(_OPENSSL_ROOT)" ] && [ -n "$(_OPENSSL_INCLUDE)" ] && [ -n "$(_OPENSSL_LIB)" ] && \
+       [ -f "$(_OPENSSL_INCLUDE)/openssl/ssl.h" ] && \
+       ([ -f "$(_OPENSSL_LIB)/libssl.a" ] || \
+        [ -f "$(_OPENSSL_LIB)/libssl.so" ] || \
+        [ -f "$(_OPENSSL_LIB)/libssl.so.3" ] || \
+        [ -f "$(_OPENSSL_LIB)/libssl.3.dylib" ] || \
+        [ -f "$(_OPENSSL_LIB)/libssl.dylib" ]); then \
+        if [ "$$(printf '%s\n%s\n' "$(_OPENSSL_VERSION)" "$(OPENSSL_MIN_VERSION)" | sort -V | head -n1)" = "$(OPENSSL_MIN_VERSION)" ]; then \
+            echo "yes"; \
+        else \
+            echo "no"; \
+        fi; \
+    else \
+        echo "no"; \
+    fi)
+
+# Export final paths for use in the build
+OPENSSL_SYSTEM_ROOT = $(_OPENSSL_ROOT)
+OPENSSL_SYSTEM_INCLUDE = $(_OPENSSL_INCLUDE)
+OPENSSL_SYSTEM_LIB = $(_OPENSSL_LIB)
+OPENSSL_SYSTEM_VERSION = $(_OPENSSL_VERSION)
+
+# Add OpenSSL paths to compiler flags if using system OpenSSL
+ifeq ($(HAS_SYSTEM_OPENSSL),yes)
+    NGINX_INCS += -I$(OPENSSL_SYSTEM_INCLUDE)
+    TEST_CFLAGS += -I$(OPENSSL_SYSTEM_INCLUDE)
+    TEST_LIBS += -L$(OPENSSL_SYSTEM_LIB)
+endif
+
+# Standalone module configuration
+STANDALONE ?= 0
+STANDALONE_DIR = standalone
+NGINX_CONFIG_DIR = $(shell nginx -V 2>&1 | grep "configure arguments:" | sed 's/.*--conf-path=\([^ ]*\).*/\1/' | xargs dirname 2>/dev/null || echo "/etc/nginx")
+NGINX_MODULE_DIR = $(shell nginx -V 2>&1 | grep "configure arguments:" | sed 's/.*--modules-path=\([^ ]*\).*/\1/' 2>/dev/null || echo "/usr/lib/nginx/modules")
+
+# Add source file tracking for proper rebuilds
+SRC_FILES := $(wildcard src/*.c src/*.h)
+
+# Modify build target to track dependencies
+.PHONY: build-target
+build-target: $(MODULE_OUTPUT) $(DEMO_NGINX)
+
+$(MODULE_OUTPUT) $(DEMO_NGINX): $(SRC_FILES)
+	@mkdir -p build
+	@echo "Found system OpenSSL version $(OPENSSL_VERSION) at $(OPENSSL_PREFIX)"
+	@echo "Include path: $(OPENSSL_INCLUDE)"
+	@echo "Library path: $(OPENSSL_LIB)"
 	@echo "Downloading nginx source..."
-	cd $(BUILD_DIR) && wget -q $(NGINX_URL) -O $(NGINX_TAR)
-	cd $(BUILD_DIR) && tar xzf $(NGINX_TAR)
+	cd build && wget -q $(NGINX_URL) -O nginx-1.24.0.tar.gz
+	cd build && tar xzf nginx-1.24.0.tar.gz
 	@echo "Downloading PCRE source..."
-	cd $(BUILD_DIR) && wget -q $(PCRE_URL) -O $(PCRE_TAR)
-	cd $(BUILD_DIR) && tar xzf $(PCRE_TAR)
-	@echo "Downloading OpenSSL source..."
-	cd $(BUILD_DIR) && wget -q $(OPENSSL_URL) -O $(OPENSSL_TAR)
-	cd $(BUILD_DIR) && tar xzf $(OPENSSL_TAR)
+	cd build && wget -q $(PCRE_URL) -O pcre-8.45.tar.gz
+	cd build && tar xzf pcre-8.45.tar.gz
 	@echo "Cleaning up downloaded archives..."
-	cd $(BUILD_DIR) && rm -f $(NGINX_TAR) $(PCRE_TAR) $(OPENSSL_TAR)
-
-# Build PCRE
-build-pcre: download
-	@if [ ! -d "$(PCRE_SRC)" ]; then \
-		echo "PCRE source directory not found. Please run 'make download' first."; \
+	cd build && rm -f nginx-1.24.0.tar.gz pcre-8.45.tar.gz
+	$(MAKE) build-pcre
+	$(MAKE) configure-nginx
+	@echo "Building nginx and modules..."
+	cd build/nginx-1.24.0 && $(MAKE)
+	@if [ ! -f "$(DEMO_NGINX)" ]; then \
+		echo "ERROR: Failed to build nginx binary. Check build logs for errors."; \
 		exit 1; \
 	fi
-	@echo "Building PCRE for tests..."
-	cd $(PCRE_SRC) && ./configure --enable-static --enable-shared && make
-
-# Build OpenSSL
-build-openssl: download
-	@if [ ! -d "$(OPENSSL_SRC)" ]; then \
-		echo "OpenSSL source directory not found. Please run 'make download' first."; \
-		exit 1; \
-	fi
-	@echo "Building OpenSSL for tests..."
-	cd $(OPENSSL_SRC) && \
-	if [ "$(OS)" = "Darwin" ]; then \
-		if [ "$(ARCH)" = "arm64" ]; then \
-			./Configure darwin64-arm64-cc no-shared; \
-		else \
-			./Configure darwin64-x86_64-cc no-shared; \
+	@if [ "$(STANDALONE)" = "1" ]; then \
+		$(MAKE) standalone-build; \
+	else \
+		if [ ! -f "$(MODULE_OUTPUT)" ]; then \
+			echo "Module was not built correctly. Trying explicit build..."; \
+			cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make -f objs/Makefile ngx_http_robonope_module.so; \
+		fi && \
+		if [ ! -f "$(MODULE_OUTPUT)" ]; then \
+			echo "ERROR: Failed to build module. Check build logs for errors."; \
+			exit 1; \
 		fi; \
-	elif [ "$(OS)" = "Linux" ]; then \
-		if [ "$(ARCH)" = "x86_64" ]; then \
-			./config no-shared; \
-		elif [ "$(ARCH)" = "aarch64" ] || [ "$(ARCH)" = "arm64" ]; then \
-			./Configure linux-aarch64 no-shared; \
-		else \
-			./config no-shared; \
-		fi; \
+	fi
+	@echo "Build completed successfully:"
+	@echo "  Module: $(MODULE_OUTPUT)"
+	@echo "  Nginx:  $(DEMO_NGINX)"
+
+# Update build to use the new target
+build: build-target
+
+# Update check-module-binary to use build-target
+.PHONY: check-module-binary
+check-module-binary:
+	@if [ ! -f "$(MODULE_OUTPUT)" ] || [ ! -f "$(DEMO_NGINX)" ] || [ ! -x "$(DEMO_NGINX)" ]; then \
+		echo "Module binary or nginx binary not found or not executable. Running clean build..."; \
+		$(MAKE) clean-build; \
 	else \
-		./config no-shared; \
-	fi && \
-	make
-
-# Configure NGINX
-configure-nginx: download build-pcre build-openssl
-	@if [ ! -d "$(NGINX_SRC)" ]; then \
-		echo "NGINX source directory not found. Please run 'make download' first."; \
-		exit 1; \
-	fi
-	@echo "Configuring nginx with RoboNope module..."
-	cd $(NGINX_SRC) && \
-	if [ "$(DB_ENGINE)" = "duckdb" ]; then \
-		ROBONOPE_USE_DUCKDB=1 ./configure --add-dynamic-module=../../src \
-			--with-compat \
-			--with-threads \
-			--with-http_ssl_module \
-			--with-pcre=../../$(PCRE_SRC) \
-			--with-openssl=../../$(OPENSSL_SRC); \
-	else \
-		./configure --add-dynamic-module=../../src \
-			--with-compat \
-			--with-threads \
-			--with-http_ssl_module \
-			--with-pcre=../../$(PCRE_SRC) \
-			--with-openssl=../../$(OPENSSL_SRC); \
-	fi
-
-# Build NGINX module
-build: configure-nginx
-	@if [ ! -f "$(NGINX_SRC)/Makefile" ]; then \
-		echo "NGINX not configured. Please run 'make configure-nginx' first."; \
-		exit 1; \
-	fi
-	@echo "Building nginx with RoboNope module..."
-	cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make modules
-	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
-		echo "Module was not built correctly. Trying explicit build..."; \
-		cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make -f objs/Makefile ngx_http_robonope_module.so; \
-	fi
-	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
-		echo "ERROR: Failed to build module. Check build logs for errors."; \
-		exit 1; \
-	fi
-
-# Check dependencies
-check-deps:
-	@echo "Checking build environment and dependencies..."
-	@echo "=============================================="
-	@echo ""
-	@echo "Checking for required tools:"
-	@echo "  CC................: $(CC) ($(call check_dependency_version,$(CC)))"
-	@echo "  CXX...............: $(CXX) ($(call check_dependency_version,$(CXX)))"
-	@echo "  make..............: $(MAKE) ($(call check_dependency_version,$(MAKE)))"
-	@echo "  wget..............: $(WGET) ($(call check_dependency_version,$(WGET)))"
-	@echo "  curl..............: $(CURL) ($(call check_dependency_version,$(CURL)))"
-	@echo "  tar...............: $(TAR) ($(call check_dependency_version,$(TAR)))"
-	@echo "  pkg-config........: $(PKG_CONFIG) ($(call check_dependency_version,$(PKG_CONFIG)))"
-	@echo "  perl..............: $(PERL) ($(call check_dependency_version,$(PERL)))"
-	@echo ""
-	@echo "Checking for required libraries:"
-	@missing=""
-	@if [ ! -x "$$(command -v $(CC))" ]; then missing="$$missing $(CC)"; fi
-	@if [ ! -x "$$(command -v $(MAKE))" ]; then missing="$$missing $(MAKE)"; fi
-	@if [ ! -x "$$(command -v $(WGET))" ] && [ ! -x "$$(command -v $(CURL))" ]; then missing="$$missing wget/curl"; fi
-	@if [ ! -x "$$(command -v $(TAR))" ]; then missing="$$missing $(TAR)"; fi
-	@if [ ! -x "$$(command -v $(PERL))" ]; then missing="$$missing $(PERL)"; fi
-	
-	@echo "  PCRE..............: $(if $(call check_lib,pcre),yes,no) $(if $(HAS_PKG_CONFIG),\($(call pkg_config_version,libpcre)\),)"
-	@echo "  zlib..............: $(if $(call check_lib,z),yes,no) $(if $(HAS_PKG_CONFIG),\($(call pkg_config_version,zlib)\),)"
-	@echo "  OpenSSL...........: $(if $(call check_lib,ssl),yes,no) $(if $(HAS_PKG_CONFIG),\($(call pkg_config_version,openssl)\),)"
-	@if [ "$(DB_ENGINE)" = "duckdb" ]; then \
-		echo "  DuckDB............: $(if $(shell command -v duckdb 2>/dev/null),yes,no)"; \
-	else \
-		echo "  SQLite3...........: $(if $(call check_lib,sqlite3),yes,no) $(if $(HAS_PKG_CONFIG),\($(call pkg_config_version,sqlite3)\),)"; \
-	fi
-	@echo ""
-	
-	@if [ "$(call check_lib,pcre)" = "no" ]; then missing="$$missing libpcre"; fi
-	@if [ "$(call check_lib,z)" = "no" ]; then missing="$$missing zlib"; fi
-	@if [ "$(call check_lib,ssl)" = "no" ] || [ "$(call check_lib,crypto)" = "no" ]; then missing="$$missing openssl"; fi
-	@if [ "$(DB_ENGINE)" = "duckdb" ] && [ ! -x "$$(command -v duckdb)" ]; then \
-		missing="$$missing duckdb"; \
-	elif [ "$(DB_ENGINE)" = "sqlite" ] && [ "$(call check_lib,sqlite3)" = "no" ]; then \
-		missing="$$missing sqlite3"; \
-	fi
-	
-	@echo "System information:"
-	@echo "  Operating System..: $(OS)"
-	@echo "  Architecture......: $(ARCH)"
-	@echo "  PCRE library path.: $(PCRE_LIB_PATH)"
-	@echo "  PCRE include path.: $(PCRE_INCLUDE_PATH)"
-	@echo "  Database engine...: $(DB_ENGINE)"
-	@echo ""
-	
-	@if [ ! -z "$$missing" ]; then \
-		echo "ERROR: Missing dependencies:$$missing"; \
-		echo "Please run 'make install-deps' to install the required dependencies"; \
-		exit 1; \
-	fi
-	@echo "All dependencies are satisfied. Ready to build."
-
-# Install the module
-install: build
-	@echo "Installing RoboNope module..."
-	sudo cp $(NGINX_SRC)/objs/ngx_http_robonope_module.so /usr/lib/nginx/modules/
-	sudo cp config/nginx.conf.example /etc/nginx/nginx.conf
-	sudo cp examples/robots.txt /etc/nginx/robots.txt
-	sudo mkdir -p /var/lib/nginx
-	sudo chown nginx:nginx /var/lib/nginx
-	sudo systemctl restart nginx
-
-# Install dependencies
-install-deps:
-	@echo "Installing dependencies..."
-	if [ "$(DB_ENGINE)" = "duckdb" ]; then \
-		if [ -f /etc/debian_version ]; then \
-			sudo apt-get install -y build-essential libduckdb-dev unity libpcre3-dev zlib1g-dev libssl-dev perl; \
-		elif [ -f /etc/redhat-release ]; then \
-			sudo yum install -y gcc gcc-c++ make duckdb-devel unity pcre-devel zlib-devel openssl-devel perl; \
-		elif [ -f /etc/arch-release ]; then \
-			sudo pacman -S --noconfirm base-devel duckdb unity pcre zlib openssl perl; \
-		elif [ "$(OS)" = "Darwin" ]; then \
-			brew install pcre zlib openssl@1.1; \
-		elif [ "$(findstring MINGW,$(OS))" = "MINGW" ]; then \
-			pacman -S --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-pcre mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl; \
-		fi \
-	else \
-		if [ -f /etc/debian_version ]; then \
-			sudo apt-get install -y build-essential libsqlite3-dev unity libpcre3-dev zlib1g-dev libssl-dev perl; \
-		elif [ -f /etc/redhat-release ]; then \
-			sudo yum install -y gcc gcc-c++ make sqlite-devel unity pcre-devel zlib-devel openssl-devel perl; \
-		elif [ -f /etc/arch-release ]; then \
-			sudo pacman -S --noconfirm base-devel sqlite unity pcre zlib openssl perl; \
-		elif [ "$(OS)" = "Darwin" ]; then \
-			brew install pcre zlib sqlite openssl@1.1; \
-		elif [ "$(findstring MINGW,$(OS))" = "MINGW" ]; then \
-			pacman -S --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-pcre mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl mingw-w64-x86_64-sqlite3; \
+		echo "Using existing binaries:"; \
+		echo "  Module: $(MODULE_OUTPUT)"; \
+		echo "  Nginx:  $(DEMO_NGINX)"; \
+		if [ ! -x "$(DEMO_NGINX)" ]; then \
+			echo "Warning: nginx binary exists but is not executable. Running clean build..."; \
+			$(MAKE) clean-build; \
 		fi \
 	fi
-
-# Run all tests
-test: test-robonope-only
-
-# This target builds dependencies and runs all tests
-test-unit-only: prepare-test-deps
-	$(TEST_CC) $(TEST_CFLAGS) -c -o build/unity/unity.o deps/Unity/src/unity.c
-	$(TEST_CC) $(TEST_CFLAGS) -o tests/unit/test_unit tests/unit/test_unit.c src/ngx_http_robonope_module_test.c src/ngx_mock.c build/unity/unity.o $(TEST_LIBS)
-	@if [ "$(OS)" = "Darwin" ]; then \
-		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" tests/unit/test_unit; \
-	elif [ "$(OS)" = "Linux" ]; then \
-		LD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" tests/unit/test_unit; \
-	else \
-		PATH="$(dir $(PCRE_LIB_PATH)):$$PATH" tests/unit/test_unit; \
-	fi
-
-# This target only prepares the dependencies needed for testing
-prepare-test-deps: download build-pcre build-openssl build-unity configure-nginx
-	@echo "Test dependencies prepared"
-
-# This target only runs the RoboNope module tests without building dependencies
-test-robonope-only: build-unity configure-nginx
-	mkdir -p build/unity
-	$(TEST_CC) $(TEST_CFLAGS) \
-		-DNGINX_PREFIX=\"$(NGINX_SRC_DIR)\" \
-		-c -o build/unity/unity.o deps/Unity/src/unity.c
-	$(TEST_CC) $(TEST_CFLAGS) \
-		-DNGINX_PREFIX=\"$(NGINX_SRC_DIR)\" \
-		-o tests/unit/test_robonope \
-		tests/unit/test_robonope.c \
-		src/ngx_http_robonope_module_test.c \
-		src/ngx_mock.c \
-		build/unity/unity.o \
-		$(TEST_LIBS)
-	@if [ "$(OS)" = "Darwin" ]; then \
-		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" \
-		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
-		tests/unit/test_robonope; \
-	elif [ "$(OS)" = "Linux" ]; then \
-		LD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" \
-		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
-		tests/unit/test_robonope; \
-	else \
-		PATH="$(dir $(PCRE_LIB_PATH)):$$PATH" \
-		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
-		tests/unit/test_robonope; \
-	fi
-
-test-integration-only: build
-	chmod +x tests/integration/test_integration.sh
-	cd tests/integration && ./test_integration.sh
-
-# Generate NGINX headers
-generate-headers: configure-nginx
-	@echo "Generating NGINX headers..."
-	@if [ ! -d "$(NGINX_OBJS_DIR)" ]; then \
-		mkdir -p $(NGINX_OBJS_DIR); \
-	fi
-	@cd $(NGINX_SRC) && ./configure --with-compat
-
-# Clean up
-clean: clean-demo
-	rm -rf $(BUILD_DIR)
-	rm -f tests/unit/test_robonope
-	rm -f tests/integration/nginx_test.conf tests/integration/test.db
-	rm -rf tests/integration/www
-
-dist:
-	@echo "Creating distribution package..."
-	@echo "To install the RoboNope module, follow these steps:"
-	@echo ""
-	@echo "1. Copy the following files to your target system:"
-	@echo "   - src/                    -> Module source code"
-	@echo "   - config/nginx.conf.example -> Example nginx configuration"
-	@echo "   - examples/robots.txt     -> Example robots.txt file"
-	@echo ""
-	@echo "2. On the target system:"
-	@echo "   a. Install dependencies (nginx, pcre, openssl)"
-	@echo "   b. Copy nginx.conf.example to /etc/nginx/nginx.conf"
-	@echo "   c. Copy robots.txt to /etc/nginx/robots.txt"
-	@echo "   d. Build and install the module:"
-	@echo "      $$ cd src"
-	@echo "      $$ nginx -V # Note configure arguments"
-	@echo "      $$ ./configure --add-module=../src [previous configure args]"
-	@echo "      $$ make modules"
-	@echo "      $$ sudo cp objs/ngx_http_robonope_module.so /usr/lib/nginx/modules/"
-	@echo ""
-	@echo "3. Create required directories:"
-	@echo "   $$ sudo mkdir -p /var/lib/nginx"
-	@echo "   $$ sudo chown nginx:nginx /var/lib/nginx"
-	@echo ""
-	@echo "4. Restart nginx:"
-	@echo "   $$ sudo systemctl restart nginx"
-	@echo ""
-	@echo "To create an actual distribution package, run:"
-	@echo "   $$ mkdir -p $(DIST_DIR)"
-	@echo "   $$ cp -r src config examples $(DIST_DIR)/"
-	@echo "   $$ cp README.md LICENSE $(DIST_DIR)/"
-	@echo "   $$ tar czf robonope-module.tar.gz $(DIST_DIR)/"
-	@echo ""
-	@echo "The distribution package will be created as 'robonope-module.tar.gz'"
-
-# Add a target to build Unity
-build-unity:
-	mkdir -p $(UNITY_SRC)/build
-	cd $(UNITY_SRC) && cc -c src/unity.c -o build/unity.o
-	cd $(UNITY_SRC) && ar rcs build/libunity.a build/unity.o
-
-# Demo target to test the module with a specific URL
-demo: build
-	@if [ -z "$(URL)" ]; then \
-		echo "Error: URL parameter is required. Usage: make demo URL=http://example.com/path"; \
-		exit 1; \
-	fi
-	@echo "Setting up demo environment..."
-	@mkdir -p $(DEMO_DIR)/conf $(DEMO_LOGS) $(DEMO_TEMP)
-	@cp -f config/nginx.conf.example $(DEMO_CONF)
-	@sed -i.bak \
-		-e 's|/path/to/robots.txt|$(PWD)/examples/robots.txt|g' \
-		-e 's|/path/to/database|$(DEMO_DIR)/robonope.db|g' \
-		-e 's|/path/to/static/content|$(PWD)/examples/static|g' \
-		-e 's|listen       80|listen       $(DEMO_PORT)|g' \
-		-e 's|error_log.*|error_log $(DEMO_LOGS)/error.log debug;|' \
-		-e 's|access_log.*|access_log $(DEMO_LOGS)/access.log combined;|' \
-		-e 's|pid.*|pid $(DEMO_TEMP)/nginx.pid;|' \
-		-e 's|user.*|user $(shell whoami);|' \
-		-e 's|load_module.*|load_module $(MODULE_OUTPUT);|' \
-		$(DEMO_CONF)
-	@echo "worker_processes 1;" > $(DEMO_CONF).tmp
-	@echo "events { worker_connections 1024; }" >> $(DEMO_CONF).tmp
-	@cat $(DEMO_CONF) >> $(DEMO_CONF).tmp
-	@mv $(DEMO_CONF).tmp $(DEMO_CONF)
-	@echo "Starting nginx with RoboNope module on port $(DEMO_PORT)..."
-	@$(DEMO_NGINX) -c $(DEMO_CONF) -p $(DEMO_DIR)
-	@echo "Sending request to $(URL)..."
-	@curl -A "Googlebot" -s "$(URL)" > $(DEMO_DIR)/response.html
-	@echo "Response saved to $(DEMO_DIR)/response.html"
-	@echo "Stopping nginx..."
-	@$(DEMO_NGINX) -c $(DEMO_CONF) -p $(DEMO_DIR) -s stop
-	@echo "Demo complete. Check $(DEMO_DIR)/robonope.db for bot tracking data."
-	@echo "To view the database: sqlite3 $(DEMO_DIR)/robonope.db 'SELECT * FROM bot_requests;'"
-	@echo ""
-	@echo "Demo files are in $(DEMO_DIR):"
-	@echo "  - Configuration: $(DEMO_CONF)"
-	@echo "  - Logs: $(DEMO_LOGS)"
-	@echo "  - Response: $(DEMO_DIR)/response.html"
-	@echo "  - Database: $(DEMO_DIR)/robonope.db"
-
-# Clean demo files
-clean-demo:
-	rm -rf $(DEMO_DIR)
 
 # Create a standalone distribution package
 release: build
@@ -606,4 +376,378 @@ release: build
 	@echo "Creating package..."
 	@tar -czf robonope-module-$(shell date +%Y%m%d).tar.gz -C $(RELEASE_DIR) .
 	@echo "Standalone distribution package created: robonope-module-$(shell date +%Y%m%d).tar.gz"
-	@echo "To install on a target system, extract the package and run ./install.sh" 
+	@echo "To install on a target system, extract the package and run ./install.sh"
+
+# Clean targets
+.PHONY: clean clean-demo standalone-clean
+
+clean:
+	rm -rf build/demo standalone
+	rm -f tests/unit/test_robonope
+	rm -f tests/integration/nginx_test.conf tests/integration/test.db
+	rm -rf tests/integration/www
+
+clean-demo: clean
+
+standalone-clean: clean
+
+# Add standalone targets
+.PHONY: standalone-build standalone-install
+
+standalone-build: src/*
+	@if [ "$(STANDALONE)" = "1" ]; then \
+		echo "Building standalone module..."; \
+		nginx_inc_path=$$(nginx -V 2>&1 | grep "configure arguments:" | sed 's/.*--prefix=\([^ ]*\).*/\1/')/include; \
+		if [ ! -d "$$nginx_inc_path" ]; then \
+			echo "Error: Cannot find Nginx headers. Please ensure Nginx development files are installed."; \
+			echo "On Debian/Ubuntu: apt-get install nginx-dev"; \
+			echo "On RHEL/CentOS: yum install nginx-devel"; \
+			echo "On macOS: brew install nginx"; \
+			exit 1; \
+		fi; \
+		mkdir -p $(STANDALONE_DIR)/objs; \
+		$(CC) -c -fPIC \
+			-I$$nginx_inc_path \
+			-I$$nginx_inc_path/event \
+			-I$$nginx_inc_path/os/unix \
+			-o $(STANDALONE_DIR)/objs/ngx_http_robonope_module.o \
+			src/ngx_http_robonope_module.c; \
+		$(CC) -shared \
+			-o $(STANDALONE_DIR)/objs/ngx_http_robonope_module.so \
+			$(STANDALONE_DIR)/objs/ngx_http_robonope_module.o; \
+	else \
+		echo "Use STANDALONE=1 to build standalone module"; \
+		exit 1; \
+	fi
+
+standalone-install: standalone-build
+	@if [ "$(STANDALONE)" = "1" ]; then \
+		echo "Installing standalone module..."; \
+		mkdir -p $(STANDALONE_DIR)/module; \
+		mkdir -p $(STANDALONE_DIR)/conf; \
+		mkdir -p $(STANDALONE_DIR)/examples; \
+		cp $(STANDALONE_DIR)/objs/ngx_http_robonope_module.so $(STANDALONE_DIR)/module/; \
+		cp config/nginx.conf.example $(STANDALONE_DIR)/conf/; \
+		cp examples/robots.txt $(STANDALONE_DIR)/examples/; \
+		cp -r examples/static $(STANDALONE_DIR)/examples/; \
+		echo "Module files installed to $(STANDALONE_DIR)/"; \
+		echo ""; \
+		echo "To install system-wide:"; \
+		echo "1. Copy module:"; \
+		echo "   sudo cp $(STANDALONE_DIR)/module/ngx_http_robonope_module.so $(NGINX_MODULE_DIR)/"; \
+		echo ""; \
+		echo "2. Add to nginx.conf:"; \
+		echo "   load_module modules/ngx_http_robonope_module.so;"; \
+		echo ""; \
+		echo "3. Copy configuration:"; \
+		echo "   sudo cp $(STANDALONE_DIR)/conf/nginx.conf.example $(NGINX_CONFIG_DIR)/robonope.conf"; \
+		echo "   sudo cp $(STANDALONE_DIR)/examples/robots.txt $(NGINX_CONFIG_DIR)/"; \
+		echo ""; \
+		echo "4. Include in main nginx.conf:"; \
+		echo "   include robonope.conf;"; \
+		echo ""; \
+		echo "5. Test and reload:"; \
+		echo "   sudo nginx -t"; \
+		echo "   sudo nginx -s reload"; \
+	else \
+		echo "Use STANDALONE=1 to install standalone module"; \
+		exit 1; \
+	fi
+
+# Modify existing install target to handle standalone mode
+install: build
+	@if [ "$(STANDALONE)" = "1" ]; then \
+		$(MAKE) standalone-install; \
+	else \
+		echo "Installing RoboNope module..."; \
+		sudo cp $(NGINX_SRC)/objs/ngx_http_robonope_module.so /usr/lib/nginx/modules/; \
+		sudo cp config/nginx.conf.example /etc/nginx/nginx.conf; \
+		sudo cp examples/robots.txt /etc/nginx/robots.txt; \
+		sudo mkdir -p /var/lib/nginx; \
+		sudo chown nginx:nginx /var/lib/nginx; \
+		sudo systemctl restart nginx; \
+	fi
+
+# Update help target to include standalone options
+help:
+	@echo "RoboNope Nginx Module - Build System"
+	@echo "===================================="
+	@echo ""
+	@echo "Available targets:"
+	@echo ""
+	@echo "Building:"
+	@echo "  make                    - Check dependencies and build the module"
+	@echo "  make STANDALONE=1       - Build standalone module (requires nginx-dev)"
+	@echo "  make all                - Same as above"
+	@echo "  make build              - Build the module"
+	@echo "  make DB_ENGINE=duckdb all - Build with DuckDB instead of SQLite"
+	@echo "  make ARCH=arm64 all     - Build for ARM64 architecture"
+	@echo "  make ARCH=x86_64 all    - Build for x86_64 architecture"
+	@echo ""
+	@echo "Dependencies:"
+	@echo "  make download           - Download required dependencies"
+	@echo "  make install-deps       - Install system dependencies"
+	@echo "  make check-deps         - Check if all dependencies are satisfied"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test               - Run all tests"
+	@echo "  make test-robonope-only - Run RoboNope module tests"
+	@echo ""
+	@echo "Demo:"
+	@echo "  make demo URL=http://localhost:8080/path - Run a demo with the specified URL"
+	@echo ""
+	@echo "Distribution:"
+	@echo "  make release            - Create a standalone distribution package"
+	@echo "  make dist               - Create distribution package"
+	@echo ""
+	@echo "Installation:"
+	@echo "  make install            - Install the module system-wide"
+	@echo "  make STANDALONE=1 install - Create local module package"
+	@echo ""
+	@echo "Cleaning:"
+	@echo "  make clean              - Clean build artifacts"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make DB_ENGINE=duckdb install-deps  - Install dependencies for DuckDB"
+	@echo "  make ARCH=arm64 all                 - Build for ARM64 architecture"
+	@echo "  make demo URL=http://localhost:8080/secret.html - Test with a specific URL"
+	@echo ""
+	@echo "Generating headers:"
+	@echo "  make generate-headers    - Generate NGINX headers"
+	@echo ""
+	@echo "Environment variables are automatically set for library paths."
+	@echo "Current settings:"
+	@echo "  OS: $(OS)"
+	@echo "  Architecture: $(ARCH)"
+	@echo "  PCRE library: $(PCRE_LIB_PATH)"
+	@echo "  PCRE include: $(PCRE_INCLUDE_PATH)"
+	@echo "  Database engine: $(DB_ENGINE)"
+	@echo ""
+
+# Pre-build checks
+.PHONY: check-openssl
+check-openssl:
+	@if [ "$(HAS_SYSTEM_OPENSSL)" = "yes" ] && [ -z "$(OPENSSL_CHECKED)" ]; then \
+		echo "Found system OpenSSL version $(OPENSSL_SYSTEM_VERSION) at $(OPENSSL_SYSTEM_ROOT)"; \
+		echo "Include path: $(OPENSSL_SYSTEM_INCLUDE)"; \
+		echo "Library path: $(OPENSSL_SYSTEM_LIB)"; \
+		export OPENSSL_CHECKED=1; \
+	elif [ "$(HAS_SYSTEM_OPENSSL)" != "yes" ] && [ -z "$(OPENSSL_CHECKED)" ]; then \
+		echo "No suitable system OpenSSL found (need >= $(OPENSSL_MIN_VERSION)). Will download and build from source."; \
+		export OPENSSL_CHECKED=1; \
+	fi
+
+# Create build directory
+prepare-build:
+	mkdir -p $(BUILD_DIR)
+
+# Download and extract sources
+download: prepare-build
+	@echo "Downloading nginx source..."
+	cd $(BUILD_DIR) && wget -q $(NGINX_URL) -O $(NGINX_TAR)
+	cd $(BUILD_DIR) && tar xzf $(NGINX_TAR)
+	@echo "Downloading PCRE source..."
+	cd $(BUILD_DIR) && wget -q $(PCRE_URL) -O $(PCRE_TAR)
+	cd $(BUILD_DIR) && tar xzf $(PCRE_TAR)
+	@if [ "$(HAS_SYSTEM_OPENSSL)" != "yes" ]; then \
+		echo "Downloading OpenSSL source..."; \
+		cd $(BUILD_DIR) && wget -q $(OPENSSL_URL) -O $(OPENSSL_TAR); \
+		cd $(BUILD_DIR) && tar xzf $(OPENSSL_TAR); \
+	fi
+	@echo "Cleaning up downloaded archives..."
+	cd $(BUILD_DIR) && rm -f $(NGINX_TAR) $(PCRE_TAR) $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),$(OPENSSL_TAR))
+
+# Build PCRE
+build-pcre: download
+	@if [ ! -d "$(PCRE_SRC)" ]; then \
+		echo "PCRE source directory not found. Please run 'make download' first."; \
+		exit 1; \
+	fi
+	@echo "Building PCRE for tests..."
+	cd $(PCRE_SRC) && \
+	if [ "$(OS)" = "Darwin" ]; then \
+		CFLAGS="-O2 -pipe -fvisibility=hidden" \
+		CXXFLAGS="-O2 -fvisibility=hidden -fvisibility-inlines-hidden" \
+		LDFLAGS="-Wl,-undefined,dynamic_lookup -Wl,-no_fixup_chains" \
+		./configure --disable-shared --enable-static \
+			--enable-utf8 \
+			--enable-unicode-properties \
+			--enable-pcre16 \
+			--enable-pcre32 \
+			--enable-jit \
+			--enable-cpp \
+			--with-match-limit=10000000 \
+			--with-match-limit-recursion=10000000 \
+			--enable-rebuild-chartables \
+			--enable-newline-is-lf; \
+	else \
+		CFLAGS="-O2 -pipe -fvisibility=hidden" \
+		CXXFLAGS="-O2 -fvisibility=hidden -fvisibility-inlines-hidden" \
+		./configure --disable-shared --enable-static \
+			--enable-utf8 \
+			--enable-unicode-properties \
+			--enable-pcre16 \
+			--enable-pcre32 \
+			--enable-jit \
+			--enable-cpp \
+			--with-match-limit=10000000 \
+			--with-match-limit-recursion=10000000 \
+			--enable-rebuild-chartables \
+			--enable-newline-is-lf; \
+	fi && \
+	make && \
+	cp .libs/libpcre.a . && \
+	cp .libs/libpcre16.a . && \
+	cp .libs/libpcre32.a . && \
+	cp config.h pcre.h
+
+# Build OpenSSL (only if needed)
+build-openssl: download
+	@if [ "$(HAS_SYSTEM_OPENSSL)" = "yes" ]; then \
+		echo "Using system OpenSSL version $(OPENSSL_SYSTEM_VERSION) from $(OPENSSL_SYSTEM_ROOT)"; \
+	else \
+		if [ ! -d "$(OPENSSL_SRC)" ]; then \
+			echo "OpenSSL source directory not found. Please run 'make download' first."; \
+			exit 1; \
+		fi; \
+		echo "Building OpenSSL from source..."; \
+		cd $(OPENSSL_SRC) && \
+		if [ "$(OS)" = "Darwin" ]; then \
+			if [ "$(ARCH)" = "arm64" ]; then \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure darwin64-arm64-cc $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+			else \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure darwin64-x86_64-cc $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+			fi; \
+		elif [ "$(OS)" = "Linux" ]; then \
+			if [ "$(ARCH)" = "x86_64" ]; then \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
+			elif [ "$(ARCH)" = "aarch64" ] || [ "$(ARCH)" = "arm64" ]; then \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure linux-aarch64 $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
+			else \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
+			fi; \
+		else \
+			CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
+		fi && \
+		make clean && \
+		make CFLAGS="$(OPENSSL_CFLAGS) -Wno-error=missing-field-initializers" && \
+		$(MAKE) install_sw; \
+	fi
+
+# Configure NGINX
+configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openssl)
+	@if [ ! -d "$(NGINX_SRC)" ]; then \
+		echo "NGINX source directory not found. Please run 'make download' first."; \
+		exit 1; \
+	fi
+	@echo "Configuring nginx with RoboNope module..."
+	cd $(NGINX_SRC) && \
+	if [ "$(DB_ENGINE)" = "duckdb" ]; then \
+		ROBONOPE_USE_DUCKDB=1 ./configure --add-dynamic-module=../../src \
+			--with-compat \
+			--with-threads \
+			--with-http_ssl_module \
+			--with-pcre=../../$(PCRE_SRC) \
+			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include" \
+			--with-ld-opt="-L../../$(PCRE_SRC) -L/opt/homebrew/opt/openssl@3/lib"; \
+	else \
+		./configure --add-dynamic-module=../../src \
+			--with-compat \
+			--with-threads \
+			--with-http_ssl_module \
+			--with-pcre=../../$(PCRE_SRC) \
+			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include" \
+			--with-ld-opt="-L../../$(PCRE_SRC) -L/opt/homebrew/opt/openssl@3/lib"; \
+	fi
+
+# Generate NGINX headers
+generate-headers: configure-nginx
+	@echo "Generating NGINX headers..."
+	@if [ ! -d "$(NGINX_OBJS_DIR)" ]; then \
+		mkdir -p $(NGINX_OBJS_DIR); \
+	fi
+	@cd $(NGINX_SRC) && ./configure --with-compat
+
+# Add a target to build Unity
+build-unity:
+	mkdir -p $(UNITY_SRC)/build
+	cd $(UNITY_SRC) && cc -c src/unity.c -o build/unity.o
+	cd $(UNITY_SRC) && ar rcs build/libunity.a build/unity.o
+
+# Demo target to test the module with a specific URL
+demo: build
+	@echo "Using existing binaries:"
+	@echo "  Module: build/nginx-1.24.0/objs/ngx_http_robonope_module.so"
+	@echo "  Nginx:  build/nginx-1.24.0/objs/nginx"
+	@echo "Setting up demo environment..."
+	@mkdir -p build/demo/conf
+	@mkdir -p build/demo/html
+	@mkdir -p build/demo/logs
+	@cp examples/static/* build/demo/html/ || true
+	@echo "Creating mime.types file..."
+	@echo "types {" > build/demo/conf/mime.types
+	@echo "    text/html                             html htm shtml;" >> build/demo/conf/mime.types
+	@echo "    text/css                              css;" >> build/demo/conf/mime.types
+	@echo "    text/xml                              xml;" >> build/demo/conf/mime.types
+	@echo "    image/gif                             gif;" >> build/demo/conf/mime.types
+	@echo "    image/jpeg                            jpeg jpg;" >> build/demo/conf/mime.types
+	@echo "    application/javascript                 js;" >> build/demo/conf/mime.types
+	@echo "    text/plain                            txt;" >> build/demo/conf/mime.types
+	@echo "    image/png                             png;" >> build/demo/conf/mime.types
+	@echo "    image/x-icon                          ico;" >> build/demo/conf/mime.types
+	@echo "    application/pdf                       pdf;" >> build/demo/conf/mime.types
+	@echo "    application/zip                       zip;" >> build/demo/conf/mime.types
+	@echo "}" >> build/demo/conf/mime.types
+	@echo "Creating nginx.conf file..."
+	@echo "worker_processes  1;" > build/demo/conf/nginx.conf
+	@echo "error_log logs/error.log debug;" >> build/demo/conf/nginx.conf
+	@echo "pid nginx.pid;" >> build/demo/conf/nginx.conf
+	@echo "load_module $(PWD)/build/nginx-1.24.0/objs/ngx_http_robonope_module.so;" >> build/demo/conf/nginx.conf
+	@echo "events {" >> build/demo/conf/nginx.conf
+	@echo "    worker_connections  1024;" >> build/demo/conf/nginx.conf
+	@echo "}" >> build/demo/conf/nginx.conf
+	@echo "http {" >> build/demo/conf/nginx.conf
+	@echo "    include       mime.types;" >> build/demo/conf/nginx.conf
+	@echo "    default_type  application/octet-stream;" >> build/demo/conf/nginx.conf
+	@echo "    access_log logs/access.log;" >> build/demo/conf/nginx.conf
+	@echo "    sendfile        on;" >> build/demo/conf/nginx.conf
+	@echo "    keepalive_timeout  65;" >> build/demo/conf/nginx.conf
+	@echo "    robonope_robots_path $(PWD)/examples/robots.txt;" >> build/demo/conf/nginx.conf
+	@echo "    robonope_db_path $(PWD)/build/demo/robonope.db;" >> build/demo/conf/nginx.conf
+	@echo "    robonope_static_content_path $(PWD)/examples/static;" >> build/demo/conf/nginx.conf
+	@echo "    robonope_dynamic_content on;" >> build/demo/conf/nginx.conf
+	@echo "    server {" >> build/demo/conf/nginx.conf
+	@echo "        listen       8080;" >> build/demo/conf/nginx.conf
+	@echo "        server_name  localhost;" >> build/demo/conf/nginx.conf
+	@echo "        root $(PWD)/build/demo/html;" >> build/demo/conf/nginx.conf
+	@echo "        location / {" >> build/demo/conf/nginx.conf
+	@echo "            robonope_enable on;" >> build/demo/conf/nginx.conf
+	@echo "            try_files \$$uri \$$uri/ =404;" >> build/demo/conf/nginx.conf
+	@echo "        }" >> build/demo/conf/nginx.conf
+	@echo "    }" >> build/demo/conf/nginx.conf
+	@echo "}" >> build/demo/conf/nginx.conf
+	@echo "Starting nginx with RoboNope module on port 8080..."
+	@build/nginx-1.24.0/objs/nginx -c $(PWD)/build/demo/conf/nginx.conf -p $(PWD)/build/demo
+
+# Add clean-build target for explicit rebuilds
+.PHONY: clean-build
+clean-build:
+	@echo "Cleaning build directory..."
+	rm -rf $(BUILD_DIR)
+	@echo "Starting fresh build..."
+	$(MAKE) download
+	$(MAKE) build-pcre
+	$(MAKE) configure-nginx
+	cd $(NGINX_SRC) && $(MAKE)
+	@if [ ! -f "$(DEMO_NGINX)" ]; then \
+		echo "ERROR: Failed to build nginx binary. Check build logs for errors."; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
+		echo "ERROR: Failed to build module. Check build logs for errors."; \
+		exit 1; \
+	fi
+	@chmod +x $(DEMO_NGINX)
+	@echo "Build completed successfully:"
+	@echo "  Module: $(MODULE_OUTPUT)"
+	@echo "  Nginx:  $(DEMO_NGINX)" 

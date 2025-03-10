@@ -101,6 +101,59 @@ sqlite3 demo/robonope.db 'SELECT * FROM bot_requests;'
    ```
 3. Configure Nginx to use the module (see Configuration)
 
+### Standalone Mode Installation
+
+If you have Nginx already installed and want to build just the RoboNope module without downloading and building Nginx from source, you can use the standalone mode:
+
+1. Build the standalone module:
+   ```bash
+   make STANDALONE=1
+   ```
+
+2. Create a local package with module and configuration files:
+   ```bash
+   make STANDALONE=1 install
+   ```
+
+This will create a `standalone` directory containing:
+- `module/ngx_http_robonope_module.so` - The compiled module
+- `conf/nginx.conf.example` - Example configuration
+- `examples/` - Example content and robots.txt
+
+To install system-wide:
+
+1. Copy the module to your Nginx modules directory:
+   ```bash
+   sudo cp standalone/module/ngx_http_robonope_module.so /usr/lib/nginx/modules/
+   ```
+
+2. Add the module to your Nginx configuration:
+   ```nginx
+   load_module modules/ngx_http_robonope_module.so;
+   ```
+
+3. Copy and customize the configuration:
+   ```bash
+   sudo cp standalone/conf/nginx.conf.example /etc/nginx/robonope.conf
+   sudo cp standalone/examples/robots.txt /etc/nginx/
+   ```
+
+4. Include in your main nginx.conf:
+   ```nginx
+   include robonope.conf;
+   ```
+
+5. Test and reload Nginx:
+   ```bash
+   sudo nginx -t
+   sudo nginx -s reload
+   ```
+
+To clean up standalone build files:
+```bash
+make standalone-clean
+```
+
 ## Configuration
 
 Add to your main nginx.conf:

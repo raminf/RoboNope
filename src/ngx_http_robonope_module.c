@@ -6,6 +6,8 @@
 #include <string.h>
 #include <sys/stat.h>  /* For stat() */
 
+#define NGINX_BUILD  /* Define this to use static function declarations */
+
 #ifdef ROBONOPE_USE_DUCKDB
 #include <duckdb.h>
 #else
@@ -140,8 +142,14 @@ ngx_http_robonope_create_main_conf(ngx_conf_t *cf)
         return NULL;
     }
 
+    mcf->cache_pool = ngx_create_pool(4096, cf->log);
+    if (mcf->cache_pool == NULL) {
+        return NULL;
+    }
+
     mcf->robot_entries = ngx_array_create(cf->pool, 10, sizeof(ngx_http_robonope_robot_entry_t));
     if (mcf->robot_entries == NULL) {
+        ngx_destroy_pool(mcf->cache_pool);
         return NULL;
     }
 
@@ -151,18 +159,10 @@ ngx_http_robonope_create_main_conf(ngx_conf_t *cf)
 static char *
 ngx_http_robonope_init_main_conf(ngx_conf_t *cf, void *conf)
 {
-    ngx_http_robonope_main_conf_t *mcf = conf;
     ngx_http_robonope_loc_conf_t *lcf;
 
     lcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_robonope_module);
-    
-    if (ngx_http_robonope_load_robots(mcf, &lcf->robots_path) != NGX_OK) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "failed to load robots.txt");
-        return NGX_CONF_ERROR;
-    }
-
-    if (ngx_http_robonope_init_db(mcf, &lcf->db_path) != NGX_OK) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "failed to initialize database");
+    if (lcf == NULL) {
         return NGX_CONF_ERROR;
     }
 
@@ -247,39 +247,53 @@ ngx_http_robonope_handler(ngx_http_request_t *r)
 {
     ngx_http_robonope_main_conf_t *mcf;
     ngx_http_robonope_loc_conf_t *lcf;
-    ngx_str_t matched_pattern;
-    ngx_uint_t i;
-    u_char *content;
+    ngx_md5_t md5;
     u_char fingerprint[16];
-    ngx_http_robonope_robot_entry_t *entry;
-    ngx_str_t *pattern;
-    
-    // Get module configuration
+
     mcf = ngx_http_get_module_main_conf(r, ngx_http_robonope_module);
     lcf = ngx_http_get_module_loc_conf(r, ngx_http_robonope_module);
-    
+
     if (!lcf->enable) {
         return NGX_DECLINED;
     }
-    
+
+    // Check if User-Agent header exists
+    if (r->headers_in.user_agent == NULL) {
+        return NGX_DECLINED;
+    }
+
+    // Initialize robots.txt and DB if not already done
+    if (mcf->robot_entries->nelts == 0) {
+        if (ngx_http_robonope_load_robots(mcf, &lcf->robots_path) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "failed to load robots.txt");
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    if (mcf->db == NULL) {
+        if (ngx_http_robonope_init_db(mcf, &lcf->db_path) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "failed to initialize database");
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+    }
+
     // Check if URL matches any disallow pattern
-    for (i = 0; i < mcf->robot_entries->nelts; i++) {
-        entry = (ngx_http_robonope_robot_entry_t *)mcf->robot_entries->elts;
+    for (ngx_uint_t i = 0; i < mcf->robot_entries->nelts; i++) {
+        ngx_http_robonope_robot_entry_t *entry = &((ngx_http_robonope_robot_entry_t *)mcf->robot_entries->elts)[i];
         
         // Skip if no disallow patterns
-        if (entry[i].disallow == NULL || entry[i].disallow->nelts == 0) {
+        if (entry->disallow == NULL || entry->disallow->nelts == 0) {
             continue;
         }
         
-        pattern = entry[i].disallow->elts;
+        ngx_str_t *pattern = entry->disallow->elts;
         
         // Check each disallow pattern
-        for (ngx_uint_t j = 0; j < entry[i].disallow->nelts; j++) {
+        for (ngx_uint_t j = 0; j < entry->disallow->nelts; j++) {
             if (ngx_strncmp(r->uri.data, pattern[j].data, pattern[j].len) == 0) {
-                matched_pattern = pattern[j];
+                ngx_str_t matched_pattern = pattern[j];
                 
                 // Generate MD5 fingerprint of client IP
-                ngx_md5_t md5;
                 ngx_md5_init(&md5);
                 ngx_md5_update(&md5, r->connection->addr_text.data, r->connection->addr_text.len);
                 ngx_md5_update(&md5, r->headers_in.user_agent->value.data, r->headers_in.user_agent->value.len);
@@ -288,7 +302,7 @@ ngx_http_robonope_handler(ngx_http_request_t *r)
                 // Check if client is already in cache
                 if (ngx_http_robonope_cache_lookup(mcf, fingerprint) == NGX_OK) {
                     // Return cached response
-                    content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry[i].disallow);
+                    u_char *content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry->disallow);
                     if (content == NULL) {
                         return NGX_HTTP_INTERNAL_SERVER_ERROR;
                     }
@@ -307,7 +321,7 @@ ngx_http_robonope_handler(ngx_http_request_t *r)
                     ngx_http_robonope_cache_insert(mcf, fingerprint);
                     
                     // Generate new content
-                    content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry[i].disallow);
+                    u_char *content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry->disallow);
                     if (content == NULL) {
                         return NGX_HTTP_INTERNAL_SERVER_ERROR;
                     }
@@ -340,6 +354,10 @@ ngx_http_robonope_load_robots(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *rob
     size_t size;
     ssize_t n;
 
+    if (mcf == NULL || robots_path == NULL || mcf->cache_pool == NULL) {
+        return NGX_ERROR;
+    }
+
     fd = ngx_open_file(robots_path->data, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
     if (fd == NGX_INVALID_FILE) {
         return NGX_ERROR;
@@ -351,6 +369,7 @@ ngx_http_robonope_load_robots(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *rob
 
     struct stat sb;
     if (stat((const char *)robots_path->data, &sb) == -1) {
+        ngx_close_file(fd);
         return NGX_ERROR;
     }
     size = sb.st_size;
@@ -369,63 +388,77 @@ ngx_http_robonope_load_robots(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *rob
     }
 
     buf[n] = '\0';
-    line = strtok(buf, "\n");
+    char *saveptr1 = NULL, *saveptr2 = NULL;
+    line = strtok_r(buf, "\n", &saveptr1);
 
     while (line != NULL) {
         // Skip comments and empty lines
         if (line[0] == '#' || line[0] == '\0') {
-            line = strtok(NULL, "\n");
+            line = strtok_r(NULL, "\n", &saveptr1);
             continue;
         }
 
-        directive = strtok(line, ":");
-        value = strtok(NULL, "\n");
-
-        if (directive && value) {
-            // Trim whitespace
-            while (*value == ' ') value++;
-
-            if (ngx_strncasecmp((u_char *)"User-agent", (u_char *)directive, 10) == 0) {
-                entry = ngx_array_push(mcf->robot_entries);
-                if (entry == NULL) {
-                    return NGX_ERROR;
-                }
-                entry->user_agent.len = ngx_strlen(value);
-                entry->user_agent.data = ngx_pcalloc(mcf->cache_pool, entry->user_agent.len + 1);
-                if (entry->user_agent.data == NULL) {
-                    return NGX_ERROR;
-                }
-                ngx_memcpy(entry->user_agent.data, value, entry->user_agent.len);
-                entry->allow = ngx_array_create(mcf->cache_pool, 4, sizeof(ngx_str_t));
-                entry->disallow = ngx_array_create(mcf->cache_pool, 4, sizeof(ngx_str_t));
-            }
-            else if (entry != NULL) {
-                ngx_str_t *pattern;
-                if (ngx_strncasecmp((u_char *)"Allow", (u_char *)directive, 5) == 0) {
-                    pattern = ngx_array_push(entry->allow);
-                }
-                else if (ngx_strncasecmp((u_char *)"Disallow", (u_char *)directive, 8) == 0) {
-                    pattern = ngx_array_push(entry->disallow);
-                }
-                else {
-                    line = strtok(NULL, "\n");
-                    continue;
-                }
-
-                if (pattern == NULL) {
-                    return NGX_ERROR;
-                }
-
-                pattern->len = ngx_strlen(value);
-                pattern->data = ngx_pcalloc(mcf->cache_pool, pattern->len + 1);
-                if (pattern->data == NULL) {
-                    return NGX_ERROR;
-                }
-                ngx_memcpy(pattern->data, value, pattern->len);
-            }
+        directive = strtok_r(line, ":", &saveptr2);
+        if (directive == NULL) {
+            line = strtok_r(NULL, "\n", &saveptr1);
+            continue;
         }
 
-        line = strtok(NULL, "\n");
+        value = strtok_r(NULL, "\n", &saveptr2);
+        if (value == NULL) {
+            line = strtok_r(NULL, "\n", &saveptr1);
+            continue;
+        }
+
+        // Trim whitespace
+        while (*value == ' ') value++;
+
+        if (ngx_strncasecmp((u_char *)"User-agent", (u_char *)directive, 10) == 0) {
+            entry = ngx_array_push(mcf->robot_entries);
+            if (entry == NULL) {
+                return NGX_ERROR;
+            }
+            entry->user_agent.len = ngx_strlen(value);
+            entry->user_agent.data = ngx_pcalloc(mcf->cache_pool, entry->user_agent.len + 1);
+            if (entry->user_agent.data == NULL) {
+                return NGX_ERROR;
+            }
+            ngx_memcpy(entry->user_agent.data, value, entry->user_agent.len);
+            entry->allow = ngx_array_create(mcf->cache_pool, 4, sizeof(ngx_str_t));
+            if (entry->allow == NULL) {
+                return NGX_ERROR;
+            }
+            entry->disallow = ngx_array_create(mcf->cache_pool, 4, sizeof(ngx_str_t));
+            if (entry->disallow == NULL) {
+                return NGX_ERROR;
+            }
+        }
+        else if (entry != NULL) {
+            ngx_str_t *pattern = NULL;
+            if (ngx_strncasecmp((u_char *)"Allow", (u_char *)directive, 5) == 0) {
+                pattern = ngx_array_push(entry->allow);
+            }
+            else if (ngx_strncasecmp((u_char *)"Disallow", (u_char *)directive, 8) == 0) {
+                pattern = ngx_array_push(entry->disallow);
+            }
+            else {
+                line = strtok_r(NULL, "\n", &saveptr1);
+                continue;
+            }
+
+            if (pattern == NULL) {
+                return NGX_ERROR;
+            }
+
+            pattern->len = ngx_strlen(value);
+            pattern->data = ngx_pcalloc(mcf->cache_pool, pattern->len + 1);
+            if (pattern->data == NULL) {
+                return NGX_ERROR;
+            }
+            ngx_memcpy(pattern->data, value, pattern->len);
+        }
+
+        line = strtok_r(NULL, "\n", &saveptr1);
     }
 
     return NGX_OK;

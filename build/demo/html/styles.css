@@ -1,0 +1,79 @@
+/* Main styles for RoboNope static example */
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8f8f8;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    background-color: #2c3e50;
+    color: white;
+    padding: 20px;
+    text-align: center;
+    border-radius: 5px 5px 0 0;
+}
+
+main {
+    background-color: white;
+    padding: 20px;
+    border-radius: 0 0 5px 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+section {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+section:last-child {
+    border-bottom: none;
+}
+
+h1 {
+    margin: 0;
+    font-size: 2.2em;
+}
+
+h2 {
+    color: #2c3e50;
+    margin-top: 0;
+}
+
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin-bottom: 10px;
+}
+
+footer {
+    text-align: center;
+    margin-top: 20px;
+    color: #777;
+    font-size: 0.9em;
+}
+
+/* Honeypot styles - these links are hidden from regular users but visible to bots */
+.honeypot-links {
+    display: none; /* Hide from regular users */
+}
+
+/* This class is used by the RoboNope module to identify honeypot elements */
+.honeypot {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+} 
