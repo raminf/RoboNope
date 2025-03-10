@@ -138,6 +138,8 @@ The demo server includes built-in rate limiting for disallowed paths:
   - /secret-data/
   - /internal/
 
+NOTE: All these paths may be overridden in `robots.txt` and configuration files.
+
 ### Viewing Logs
 
 The demo stores all bot requests in a SQLite database (or DuckDB if configured). You can view the logs using:

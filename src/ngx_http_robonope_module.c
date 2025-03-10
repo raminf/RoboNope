@@ -25,7 +25,6 @@ static ngx_int_t ngx_http_robonope_init(ngx_conf_t *cf);
 static ngx_int_t ngx_http_robonope_handler(ngx_http_request_t *r);
 static void ngx_http_robonope_cleanup_db(void *data);
 static void ngx_http_robonope_cache_cleanup(ngx_http_robonope_main_conf_t *mcf) __attribute__((unused));
-static u_char *ngx_http_robonope_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs);
 static u_char *ngx_http_robonope_generate_random_text(ngx_pool_t *pool, ngx_uint_t words);
 static ngx_str_t *ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url);
 static ngx_int_t ngx_http_robonope_send_response(ngx_http_request_t *r, u_char *content);
@@ -525,7 +524,6 @@ static u_char *
 ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns)
 {
     /* We can't access the location configuration here, so we'll use default behavior */
-    ngx_int_t use_lorem_ipsum = 1; /* Default to using Lorem Ipsum */
     u_char *content, *body;
     ngx_str_t *honeypot_link;
     size_t total_len;
@@ -537,13 +535,8 @@ ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t
         return NULL;
     }
 
-    // Generate body content
-    if (use_lorem_ipsum) {
-        body = ngx_http_robonope_generate_lorem_ipsum(pool, 3);
-    } else {
-        body = ngx_http_robonope_generate_random_text(pool, 100);
-    }
-
+    // Generate body content - always use random text now
+    body = ngx_http_robonope_generate_random_text(pool, 50);
     if (body == NULL) {
         return NULL;
     }
@@ -571,7 +564,9 @@ ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t
         "</style>\n"
         "</head>\n"
         "<body>\n"
+        "<div class=\"content\">\n"
         "%s\n"
+        "</div>\n"
         "<a href=\"%s\" class=\"%s\">Important Information</a>\n"
         "</body>\n"
         "</html>",
@@ -635,62 +630,87 @@ ngx_http_robonope_log_request(
 }
 
 static u_char *
-ngx_http_robonope_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint_t paragraphs)
-{
-    static const char *lorem_paragraphs[] = {
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-        "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
-        "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
-        "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
-    };
-    static const size_t num_paragraphs = sizeof(lorem_paragraphs) / sizeof(lorem_paragraphs[0]);
-
-    size_t total_len = 0;
-    ngx_uint_t i;
-    u_char *content, *p;
-
-    // Calculate total length needed
-    for (i = 0; i < paragraphs && i < num_paragraphs; i++) {
-        total_len += ngx_strlen(lorem_paragraphs[i]) + 5; // +5 for <p> tags and newline
-    }
-
-    content = ngx_pcalloc(pool, total_len + 1);
-    if (content == NULL) {
-        return NULL;
-    }
-
-    p = content;
-    for (i = 0; i < paragraphs && i < num_paragraphs; i++) {
-        p = ngx_sprintf(p, "<p>%s</p>\n", lorem_paragraphs[i]);
-    }
-
-    return content;
-}
-
-static u_char *
 ngx_http_robonope_generate_random_text(ngx_pool_t *pool, ngx_uint_t words)
 {
-    static const char *word_list[] = {
-        "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
-        "it", "for", "not", "on", "with", "he", "as", "you", "do", "at"
+    static const char *subjects[] = {
+        "the system", "our network", "the server", "this page", "the website",
+        "the database", "the service", "the platform", "the application", "the interface"
     };
-    static const size_t num_words = sizeof(word_list) / sizeof(word_list[0]);
+    
+    static const char *verbs[] = {
+        "processes", "manages", "handles", "analyzes", "monitors",
+        "validates", "updates", "maintains", "controls", "optimizes"
+    };
+    
+    static const char *objects[] = {
+        "data requests", "user sessions", "network traffic", "system resources",
+        "security protocols", "access permissions", "configuration settings",
+        "database connections", "cache entries", "service endpoints"
+    };
+    
+    static const char *adjectives[] = {
+        "secure", "efficient", "reliable", "dynamic", "automated",
+        "integrated", "optimized", "scalable", "robust", "advanced"
+    };
+    
+    static const char *adverbs[] = {
+        "automatically", "efficiently", "securely", "dynamically", "continuously",
+        "reliably", "seamlessly", "actively", "intelligently", "effectively"
+    };
+    
+    static const char *conjunctions[] = {
+        "while", "and", "as", "because", "although",
+        "however", "therefore", "moreover", "furthermore", "additionally"
+    };
 
-    size_t total_len = words * 10; // Average word length + space
+    static const size_t num_subjects = sizeof(subjects) / sizeof(subjects[0]);
+    static const size_t num_verbs = sizeof(verbs) / sizeof(verbs[0]);
+    static const size_t num_objects = sizeof(objects) / sizeof(objects[0]);
+    static const size_t num_adjectives = sizeof(adjectives) / sizeof(adjectives[0]);
+    static const size_t num_adverbs = sizeof(adverbs) / sizeof(adverbs[0]);
+    static const size_t num_conjunctions = sizeof(conjunctions) / sizeof(conjunctions[0]);
+
+    size_t total_len = words * 20; // Average word length + space + punctuation
     u_char *content, *p;
-    ngx_uint_t i;
-
+    ngx_uint_t i, sentences;
+    
     content = ngx_pcalloc(pool, total_len + 1);
     if (content == NULL) {
         return NULL;
     }
-
+    
     p = content;
-    for (i = 0; i < words; i++) {
-        size_t word_index = ngx_random() % num_words;
-        p = ngx_sprintf(p, "%s ", word_list[word_index]);
+    sentences = words / 10 + 1; // Create a new sentence every ~10 words
+    
+    for (i = 0; i < sentences; i++) {
+        // Basic sentence patterns
+        switch (ngx_random() % 3) {
+            case 0: // Pattern: Subject + Verb + Object
+                p = ngx_sprintf(p, "%s %s %s. ",
+                    subjects[ngx_random() % num_subjects],
+                    verbs[ngx_random() % num_verbs],
+                    objects[ngx_random() % num_objects]);
+                break;
+                
+            case 1: // Pattern: Subject + Adverb + Verb + Adjective + Object
+                p = ngx_sprintf(p, "%s %s %s %s %s. ",
+                    subjects[ngx_random() % num_subjects],
+                    adverbs[ngx_random() % num_adverbs],
+                    verbs[ngx_random() % num_verbs],
+                    adjectives[ngx_random() % num_adjectives],
+                    objects[ngx_random() % num_objects]);
+                break;
+                
+            case 2: // Pattern: Conjunction + Subject + Verb + Object
+                p = ngx_sprintf(p, "%s %s %s %s. ",
+                    conjunctions[ngx_random() % num_conjunctions],
+                    subjects[ngx_random() % num_subjects],
+                    verbs[ngx_random() % num_verbs],
+                    objects[ngx_random() % num_objects]);
+                break;
+        }
     }
-
+    
     return content;
 }
 
