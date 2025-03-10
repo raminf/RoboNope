@@ -9,7 +9,15 @@
 
 `RoboNope` is an Nginx module designed to deny access to files specified in the robots.txt `Disallow` entries. It serves randomly generated content to bots that ignore `robots.txt` rules. Ignore at your peril.
 
-According to [W3Techs](https://w3techs.com/technologies/overview/web_server) the top 2 most popular webservers are Nginx and Apache.
+According to [W3Techs](https://w3techs.com/technologies/overview/web_server) the top 5 most popular webservers as of March 2025 are:
+
+- [nginx](https://nginx.org) (33.8%)
+- [Apache](https://httpd.apache.org) (26.8%)
+- [Cloudflare Server](https://www.cloudflare.com) (23.2%)
+- [Litespeed](https://www.litespeedtech.com/products/litespeed-web-server) (14.5%)
+- [Node.js](https://nodejs.org) (4.2%)
+
+This version works with `nginx`. We will be releasing a separate version for Apache with the same functionality.
 
 ## Features
 
