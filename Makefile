@@ -147,7 +147,7 @@ else
 endif
 
 # Module output
-MODULE_OUTPUT = $(NGINX_SRC)/objs/ngx_http_sayplease_module.so
+MODULE_OUTPUT = $(NGINX_SRC)/objs/ngx_http_robonope_module.so
 
 # Release directory
 RELEASE_DIR = release
@@ -160,13 +160,13 @@ DEMO_CONF = $(DEMO_DIR)/conf/nginx.conf
 DEMO_LOGS = $(DEMO_DIR)/logs
 DEMO_TEMP = $(DEMO_DIR)/temp
 
-.PHONY: all clean clean-demo download install test test-unit test-integration install-deps check-deps dist build test-only test-unit-only test-integration-only prepare-build prepare-test-deps test-sayplease-only help demo release generate-headers
+.PHONY: all clean clean-demo download install test test-unit test-integration install-deps check-deps dist build test-only test-unit-only test-integration-only prepare-build prepare-test-deps test-robonope-only help demo release generate-headers
 
 all: check-deps build
 
 # Help target
 help:
-	@echo "SayPlease Nginx Module - Build System"
+	@echo "RoboNope Nginx Module - Build System"
 	@echo "===================================="
 	@echo ""
 	@echo "Available targets:"
@@ -186,7 +186,7 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test               - Run all tests"
-	@echo "  make test-sayplease-only - Run SayPlease module tests"
+	@echo "  make test-robonope-only - Run RoboNope module tests"
 	@echo ""
 	@echo "Demo:"
 	@echo "  make demo URL=http://localhost:8080/path - Run a demo with the specified URL"
@@ -278,10 +278,10 @@ configure-nginx: download build-pcre build-openssl
 		echo "NGINX source directory not found. Please run 'make download' first."; \
 		exit 1; \
 	fi
-	@echo "Configuring nginx with SayPlease module..."
+	@echo "Configuring nginx with RoboNope module..."
 	cd $(NGINX_SRC) && \
 	if [ "$(DB_ENGINE)" = "duckdb" ]; then \
-		SAYPLEASE_USE_DUCKDB=1 ./configure --add-dynamic-module=../../src \
+		ROBONOPE_USE_DUCKDB=1 ./configure --add-dynamic-module=../../src \
 			--with-compat \
 			--with-threads \
 			--with-http_ssl_module \
@@ -302,11 +302,11 @@ build: configure-nginx
 		echo "NGINX not configured. Please run 'make configure-nginx' first."; \
 		exit 1; \
 	fi
-	@echo "Building nginx with SayPlease module..."
+	@echo "Building nginx with RoboNope module..."
 	cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make modules
 	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
 		echo "Module was not built correctly. Trying explicit build..."; \
-		cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make -f objs/Makefile ngx_http_sayplease_module.so; \
+		cd $(NGINX_SRC) && CFLAGS="$(NGINX_INCS)" make -f objs/Makefile ngx_http_robonope_module.so; \
 	fi
 	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
 		echo "ERROR: Failed to build module. Check build logs for errors."; \
@@ -372,8 +372,8 @@ check-deps:
 
 # Install the module
 install: build
-	@echo "Installing SayPlease module..."
-	sudo cp $(NGINX_SRC)/objs/ngx_http_sayplease_module.so /usr/lib/nginx/modules/
+	@echo "Installing RoboNope module..."
+	sudo cp $(NGINX_SRC)/objs/ngx_http_robonope_module.so /usr/lib/nginx/modules/
 	sudo cp config/nginx.conf.example /etc/nginx/nginx.conf
 	sudo cp examples/robots.txt /etc/nginx/robots.txt
 	sudo mkdir -p /var/lib/nginx
@@ -410,12 +410,12 @@ install-deps:
 	fi
 
 # Run all tests
-test: test-sayplease-only
+test: test-robonope-only
 
 # This target builds dependencies and runs all tests
 test-unit-only: prepare-test-deps
 	$(TEST_CC) $(TEST_CFLAGS) -c -o build/unity/unity.o deps/Unity/src/unity.c
-	$(TEST_CC) $(TEST_CFLAGS) -o tests/unit/test_unit tests/unit/test_unit.c src/ngx_http_sayplease_module_test.c src/ngx_mock.c build/unity/unity.o $(TEST_LIBS)
+	$(TEST_CC) $(TEST_CFLAGS) -o tests/unit/test_unit tests/unit/test_unit.c src/ngx_http_robonope_module_test.c src/ngx_mock.c build/unity/unity.o $(TEST_LIBS)
 	@if [ "$(OS)" = "Darwin" ]; then \
 		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" tests/unit/test_unit; \
 	elif [ "$(OS)" = "Linux" ]; then \
@@ -428,32 +428,32 @@ test-unit-only: prepare-test-deps
 prepare-test-deps: download build-pcre build-openssl build-unity configure-nginx
 	@echo "Test dependencies prepared"
 
-# This target only runs the SayPlease module tests without building dependencies
-test-sayplease-only: build-unity configure-nginx
+# This target only runs the RoboNope module tests without building dependencies
+test-robonope-only: build-unity configure-nginx
 	mkdir -p build/unity
 	$(TEST_CC) $(TEST_CFLAGS) \
 		-DNGINX_PREFIX=\"$(NGINX_SRC_DIR)\" \
 		-c -o build/unity/unity.o deps/Unity/src/unity.c
 	$(TEST_CC) $(TEST_CFLAGS) \
 		-DNGINX_PREFIX=\"$(NGINX_SRC_DIR)\" \
-		-o tests/unit/test_sayplease \
-		tests/unit/test_sayplease.c \
-		src/ngx_http_sayplease_module_test.c \
+		-o tests/unit/test_robonope \
+		tests/unit/test_robonope.c \
+		src/ngx_http_robonope_module_test.c \
 		src/ngx_mock.c \
 		build/unity/unity.o \
 		$(TEST_LIBS)
 	@if [ "$(OS)" = "Darwin" ]; then \
 		DYLD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" \
 		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
-		tests/unit/test_sayplease; \
+		tests/unit/test_robonope; \
 	elif [ "$(OS)" = "Linux" ]; then \
 		LD_LIBRARY_PATH="$(dir $(PCRE_LIB_PATH))" \
 		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
-		tests/unit/test_sayplease; \
+		tests/unit/test_robonope; \
 	else \
 		PATH="$(dir $(PCRE_LIB_PATH)):$$PATH" \
 		NGINX_PREFIX="$(NGINX_SRC_DIR)" \
-		tests/unit/test_sayplease; \
+		tests/unit/test_robonope; \
 	fi
 
 test-integration-only: build
@@ -471,13 +471,13 @@ generate-headers: configure-nginx
 # Clean up
 clean: clean-demo
 	rm -rf $(BUILD_DIR)
-	rm -f tests/unit/test_sayplease
+	rm -f tests/unit/test_robonope
 	rm -f tests/integration/nginx_test.conf tests/integration/test.db
 	rm -rf tests/integration/www
 
 dist:
 	@echo "Creating distribution package..."
-	@echo "To install the SayPlease module, follow these steps:"
+	@echo "To install the RoboNope module, follow these steps:"
 	@echo ""
 	@echo "1. Copy the following files to your target system:"
 	@echo "   - src/                    -> Module source code"
@@ -493,7 +493,7 @@ dist:
 	@echo "      $$ nginx -V # Note configure arguments"
 	@echo "      $$ ./configure --add-module=../src [previous configure args]"
 	@echo "      $$ make modules"
-	@echo "      $$ sudo cp objs/ngx_http_sayplease_module.so /usr/lib/nginx/modules/"
+	@echo "      $$ sudo cp objs/ngx_http_robonope_module.so /usr/lib/nginx/modules/"
 	@echo ""
 	@echo "3. Create required directories:"
 	@echo "   $$ sudo mkdir -p /var/lib/nginx"
@@ -506,9 +506,9 @@ dist:
 	@echo "   $$ mkdir -p $(DIST_DIR)"
 	@echo "   $$ cp -r src config examples $(DIST_DIR)/"
 	@echo "   $$ cp README.md LICENSE $(DIST_DIR)/"
-	@echo "   $$ tar czf sayplease-module.tar.gz $(DIST_DIR)/"
+	@echo "   $$ tar czf robonope-module.tar.gz $(DIST_DIR)/"
 	@echo ""
-	@echo "The distribution package will be created as 'sayplease-module.tar.gz'"
+	@echo "The distribution package will be created as 'robonope-module.tar.gz'"
 
 # Add a target to build Unity
 build-unity:
@@ -527,7 +527,7 @@ demo: build
 	@cp -f config/nginx.conf.example $(DEMO_CONF)
 	@sed -i.bak \
 		-e 's|/path/to/robots.txt|$(PWD)/examples/robots.txt|g' \
-		-e 's|/path/to/database|$(DEMO_DIR)/sayplease.db|g' \
+		-e 's|/path/to/database|$(DEMO_DIR)/robonope.db|g' \
 		-e 's|/path/to/static/content|$(PWD)/examples/static|g' \
 		-e 's|listen       80|listen       $(DEMO_PORT)|g' \
 		-e 's|error_log.*|error_log $(DEMO_LOGS)/error.log debug;|' \
@@ -540,21 +540,21 @@ demo: build
 	@echo "events { worker_connections 1024; }" >> $(DEMO_CONF).tmp
 	@cat $(DEMO_CONF) >> $(DEMO_CONF).tmp
 	@mv $(DEMO_CONF).tmp $(DEMO_CONF)
-	@echo "Starting nginx with SayPlease module on port $(DEMO_PORT)..."
+	@echo "Starting nginx with RoboNope module on port $(DEMO_PORT)..."
 	@$(DEMO_NGINX) -c $(DEMO_CONF) -p $(DEMO_DIR)
 	@echo "Sending request to $(URL)..."
 	@curl -A "Googlebot" -s "$(URL)" > $(DEMO_DIR)/response.html
 	@echo "Response saved to $(DEMO_DIR)/response.html"
 	@echo "Stopping nginx..."
 	@$(DEMO_NGINX) -c $(DEMO_CONF) -p $(DEMO_DIR) -s stop
-	@echo "Demo complete. Check $(DEMO_DIR)/sayplease.db for bot tracking data."
-	@echo "To view the database: sqlite3 $(DEMO_DIR)/sayplease.db 'SELECT * FROM bot_requests;'"
+	@echo "Demo complete. Check $(DEMO_DIR)/robonope.db for bot tracking data."
+	@echo "To view the database: sqlite3 $(DEMO_DIR)/robonope.db 'SELECT * FROM bot_requests;'"
 	@echo ""
 	@echo "Demo files are in $(DEMO_DIR):"
 	@echo "  - Configuration: $(DEMO_CONF)"
 	@echo "  - Logs: $(DEMO_LOGS)"
 	@echo "  - Response: $(DEMO_DIR)/response.html"
-	@echo "  - Database: $(DEMO_DIR)/sayplease.db"
+	@echo "  - Database: $(DEMO_DIR)/robonope.db"
 
 # Clean demo files
 clean-demo:
@@ -576,7 +576,7 @@ release: build
 	@cp README.md LICENSE $(RELEASE_DIR)/docs/
 	@echo "Creating installation script..."
 	@echo '#!/bin/bash' > $(RELEASE_DIR)/install.sh
-	@echo '# SayPlease Nginx Module Installation Script' >> $(RELEASE_DIR)/install.sh
+	@echo '# RoboNope Nginx Module Installation Script' >> $(RELEASE_DIR)/install.sh
 	@echo '' >> $(RELEASE_DIR)/install.sh
 	@echo '# Detect Nginx modules directory' >> $(RELEASE_DIR)/install.sh
 	@echo 'NGINX_PREFIX=$$(nginx -V 2>&1 | grep "configure arguments:" | sed '"'"'s/.*--prefix=\([^ ]*\).*/\1/'"'"')' >> $(RELEASE_DIR)/install.sh
@@ -589,21 +589,21 @@ release: build
 	@echo '' >> $(RELEASE_DIR)/install.sh
 	@echo '# Copy module binary' >> $(RELEASE_DIR)/install.sh
 	@echo 'echo "Installing module to $$MODULES_DIR..."' >> $(RELEASE_DIR)/install.sh
-	@echo 'cp bin/ngx_http_sayplease_module.so "$$MODULES_DIR/"' >> $(RELEASE_DIR)/install.sh
+	@echo 'cp bin/ngx_http_robonope_module.so "$$MODULES_DIR/"' >> $(RELEASE_DIR)/install.sh
 	@echo '' >> $(RELEASE_DIR)/install.sh
 	@echo '# Create configuration' >> $(RELEASE_DIR)/install.sh
 	@echo 'echo "Installing configuration example..."' >> $(RELEASE_DIR)/install.sh
 	@echo 'NGINX_CONF_DIR="$$NGINX_PREFIX/conf"' >> $(RELEASE_DIR)/install.sh
-	@echo 'cp conf/nginx.conf.example "$$NGINX_CONF_DIR/sayplease.conf.example"' >> $(RELEASE_DIR)/install.sh
+	@echo 'cp conf/nginx.conf.example "$$NGINX_CONF_DIR/robonope.conf.example"' >> $(RELEASE_DIR)/install.sh
 	@echo '' >> $(RELEASE_DIR)/install.sh
 	@echo 'echo "Installation complete!"' >> $(RELEASE_DIR)/install.sh
 	@echo 'echo ""' >> $(RELEASE_DIR)/install.sh
 	@echo 'echo "To enable the module, add the following to your nginx.conf:"' >> $(RELEASE_DIR)/install.sh
-	@echo 'echo "  load_module modules/ngx_http_sayplease_module.so;"' >> $(RELEASE_DIR)/install.sh
+	@echo 'echo "  load_module modules/ngx_http_robonope_module.so;"' >> $(RELEASE_DIR)/install.sh
 	@echo 'echo ""' >> $(RELEASE_DIR)/install.sh
-	@echo 'echo "For configuration examples, see: $$NGINX_CONF_DIR/sayplease.conf.example"' >> $(RELEASE_DIR)/install.sh
+	@echo 'echo "For configuration examples, see: $$NGINX_CONF_DIR/robonope.conf.example"' >> $(RELEASE_DIR)/install.sh
 	@chmod +x $(RELEASE_DIR)/install.sh
 	@echo "Creating package..."
-	@tar -czf sayplease-module-$(shell date +%Y%m%d).tar.gz -C $(RELEASE_DIR) .
-	@echo "Standalone distribution package created: sayplease-module-$(shell date +%Y%m%d).tar.gz"
+	@tar -czf robonope-module-$(shell date +%Y%m%d).tar.gz -C $(RELEASE_DIR) .
+	@echo "Standalone distribution package created: robonope-module-$(shell date +%Y%m%d).tar.gz"
 	@echo "To install on a target system, extract the package and run ./install.sh" 

@@ -1,0 +1,29 @@
+User-agent: *
+Disallow: /secret/
+Disallow: /private/
+Disallow: /norobots/
+Disallow: /admin/
+Disallow: /*.txt$
+Disallow: /test*
+Disallow: /*?debug=*
+Disallow: /api/internal/
+
+User-agent: BadBot
+Disallow: /
+
+User-agent: Googlebot
+Disallow: /nogoogle/
+Disallow: /private/google/
+Disallow: /*.pdf$
+
+User-agent: Bingbot
+Disallow: /nobing/
+Disallow: /private/bing/
+Disallow: /*.doc$
+
+# RoboNope test patterns
+User-agent: RoboNopeTestBot
+Disallow: /robonope-test/
+Disallow: /test-patterns/
+Disallow: /*.test$
+Disallow: /*?test=* 
