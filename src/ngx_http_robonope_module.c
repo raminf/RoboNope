@@ -29,6 +29,7 @@ static u_char *ngx_http_robonope_generate_lorem_ipsum(ngx_pool_t *pool, ngx_uint
 static u_char *ngx_http_robonope_generate_random_text(ngx_pool_t *pool, ngx_uint_t words);
 static ngx_str_t *ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url);
 static ngx_int_t ngx_http_robonope_send_response(ngx_http_request_t *r, u_char *content);
+static u_char *ngx_http_robonope_generate_class_name(ngx_pool_t *pool);
 
 static ngx_command_t ngx_http_robonope_commands[] = {
     {
@@ -528,6 +529,13 @@ ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t
     u_char *content, *body;
     ngx_str_t *honeypot_link;
     size_t total_len;
+    u_char *random_class;
+
+    // Generate random class name
+    random_class = ngx_http_robonope_generate_class_name(pool);
+    if (random_class == NULL) {
+        return NULL;
+    }
 
     // Generate body content
     if (use_lorem_ipsum) {
@@ -567,10 +575,10 @@ ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t
         "<a href=\"%s\" class=\"%s\">Important Information</a>\n"
         "</body>\n"
         "</html>",
-        "honeypot",
+        random_class,
         body,
         honeypot_link->data,
-        "honeypot");
+        random_class);
 
     return content;
 }
@@ -803,4 +811,28 @@ ngx_http_robonope_send_response(ngx_http_request_t *r, u_char *content)
     ngx_http_send_header(r);
     
     return ngx_http_output_filter(r, &out);
+}
+
+/* Helper function to generate a random CSS class name */
+static u_char *
+ngx_http_robonope_generate_class_name(ngx_pool_t *pool)
+{
+    static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    static const size_t charset_size = sizeof(charset) - 1;
+    static const size_t class_length = 12; // Random length between 8-16 chars
+    
+    u_char *class_name = ngx_pcalloc(pool, class_length + 1);
+    if (class_name == NULL) {
+        return NULL;
+    }
+    
+    // First character must be a letter
+    class_name[0] = charset[ngx_random() % 52];
+    
+    // Rest can be any character from charset
+    for (size_t i = 1; i < class_length; i++) {
+        class_name[i] = charset[ngx_random() % charset_size];
+    }
+    
+    return class_name;
 } 

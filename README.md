@@ -37,7 +37,7 @@ This version works with `nginx`. We will be releasing a separate version for Apa
 - Nginx (1.24.0 or later recommended)
 - PCRE library
 - OpenSSL
-- SQLite3 or DuckDB
+- SQLite3 or DuckDB (under development)
 - C compiler (gcc/clang)
 - make
 
@@ -48,11 +48,21 @@ This version works with `nginx`. We will be releasing a separate version for Apa
 git clone --recursive https://github.com/raminf/RoboNope.git
 cd robonope
 
+# Check dependencies
+make check-deps
+
 # Build with SQLite (default)
 make
 
 # Or build with DuckDB
 make DB_ENGINE=duckdb all
+
+# For specific architectures
+make ARCH=arm64 all     # Build for ARM64
+make ARCH=x86_64 all    # Build for x86_64
+
+# For standalone module (requires nginx-dev)
+make STANDALONE=1
 ```
 
 ### Running Tests
@@ -61,9 +71,8 @@ make DB_ENGINE=duckdb all
 # Run all tests
 make test
 
-# Run specific test suites
-make test-unit
-make test-integration
+# Run RoboNope module tests only
+make test-robonope-only
 ```
 
 ### Running the Demo
@@ -71,16 +80,91 @@ make test-integration
 The demo will:
 1. Set up a test environment
 2. Start Nginx with the RoboNope module on port 8080
-3. Send a test request
+3. Send a test request to a disallowed path
 4. Show the results
 
 ```bash
-make demo URL=http://localhost:8080/secret.html
+# Start the demo server
+make demo-start
+
+# Test with a disallowed URL
+make demo-test
+
+# View all logged requests (with pagination)
+make demo-logs
+
+# Stop the demo server
+make demo-stop
+
+# Or run everything at once (except stop)
+make demo
 ```
 
-To view the tracked requests:
+### Demo Configuration
+
+You can customize the demo environment using these variables:
+
+- `DB_PATH`: Override the default database location
+  ```bash
+  # Use custom database location
+  DB_PATH=/tmp/robonope.db make demo-start
+  
+  # View logs from custom database
+  DB_PATH=/tmp/robonope.db make demo-logs
+  ```
+
+- `DB_ENGINE`: Select the database engine (sqlite or duckdb)
+  ```bash
+  # Build and run with DuckDB
+  DB_ENGINE=duckdb make all
+  make demo-start
+  ```
+
+Default settings:
+- Database Path: `build/demo/db/robonope.db`
+- Database Engine: SQLite
+
+### Rate Limiting
+
+The demo server includes built-in rate limiting for disallowed paths:
+
+- Limits requests to 1 per second per IP address
+- Allows bursts of up to 5 requests
+- Only applies to paths matching robots.txt Disallow patterns
+- Protected paths:
+  - /norobots/
+  - /private/
+  - /admin/
+  - /secret-data/
+  - /internal/
+
+### Viewing Logs
+
+The demo stores all bot requests in a SQLite database (or DuckDB if configured). You can view the logs using:
+
 ```bash
-sqlite3 demo/robonope.db 'SELECT * FROM bot_requests;'
+make demo-logs
+```
+
+The log entries include:
+- ID: Unique request identifier
+- Timestamp: When the request was made
+- IP: Client IP address
+- User-Agent: Bot identifier
+- URL: Requested path
+- Matched Pattern: Which robots.txt pattern was matched
+
+### Cleaning Up
+
+```bash
+# Clean build artifacts
+make clean
+
+# Clean demo environment
+make clean-demo
+
+# Force a complete rebuild
+make clean-build
 ```
 
 ## Installation
@@ -101,58 +185,22 @@ sqlite3 demo/robonope.db 'SELECT * FROM bot_requests;'
    ```
 3. Configure Nginx to use the module (see Configuration)
 
-### Standalone Mode Installation
+### Standalone Installation
 
-If you have Nginx already installed and want to build just the RoboNope module without downloading and building Nginx from source, you can use the standalone mode:
+For systems with Nginx already installed:
 
-1. Build the standalone module:
-   ```bash
-   make STANDALONE=1
-   ```
+```bash
+# Build standalone module
+make STANDALONE=1
 
-2. Create a local package with module and configuration files:
-   ```bash
-   make STANDALONE=1 install
-   ```
+# Create local package
+make STANDALONE=1 install
+```
 
 This will create a `standalone` directory containing:
 - `module/ngx_http_robonope_module.so` - The compiled module
 - `conf/nginx.conf.example` - Example configuration
 - `examples/` - Example content and robots.txt
-
-To install system-wide:
-
-1. Copy the module to your Nginx modules directory:
-   ```bash
-   sudo cp standalone/module/ngx_http_robonope_module.so /usr/lib/nginx/modules/
-   ```
-
-2. Add the module to your Nginx configuration:
-   ```nginx
-   load_module modules/ngx_http_robonope_module.so;
-   ```
-
-3. Copy and customize the configuration:
-   ```bash
-   sudo cp standalone/conf/nginx.conf.example /etc/nginx/robonope.conf
-   sudo cp standalone/examples/robots.txt /etc/nginx/
-   ```
-
-4. Include in your main nginx.conf:
-   ```nginx
-   include robonope.conf;
-   ```
-
-5. Test and reload Nginx:
-   ```bash
-   sudo nginx -t
-   sudo nginx -s reload
-   ```
-
-To clean up standalone build files:
-```bash
-make standalone-clean
-```
 
 ## Configuration
 
@@ -164,13 +212,49 @@ load_module modules/ngx_http_robonope_module.so;
 http {
     # ... other settings ...
 
+    # Rate limiting configuration for disallowed paths
+    limit_req_zone $binary_remote_addr zone=robonope_limit:10m rate=1r/s;
+
+    # RoboNope configuration
     robonope_enable on;
     robonope_robots_path /path/to/robots.txt;
     robonope_db_path /path/to/database;  # .db for SQLite, .duckdb for DuckDB
     robonope_static_content_path /path/to/static/content;
     robonope_dynamic_content on; # or off to use static content
+
+    server {
+        # ... server settings ...
+
+        # Rate limiting for disallowed paths
+        location ~ ^/(norobots|private|admin|secret-data|internal)/ {
+            limit_req zone=robonope_limit burst=5 nodelay;
+            robonope_enable on;  # Can be overridden per location
+        }
+
+        # Default location without rate limiting
+        location / {
+            robonope_enable on;  # Can be overridden per location
+        }
+    }
 }
 ```
+
+### Rate Limiting Options
+
+The module supports Nginx's built-in rate limiting for disallowed paths. The configuration above:
+
+- Creates a 10MB zone named `robonope_limit` that tracks client IP addresses
+- Limits requests to 1 per second (1r/s) per IP address
+- Allows a burst of 5 requests with no delay
+- Only applies to paths that match the disallowed patterns in robots.txt
+
+You can adjust these values based on your needs:
+- `rate=1r/s`: Change the number before `r/s` to allow more/fewer requests per second
+- `burst=5`: Change this number to allow larger/smaller bursts of requests
+- `nodelay`: Remove this to queue excess requests instead of rejecting them
+- `zone=robonope_limit:10m`: Adjust the 10m value to allocate more/less memory for tracking clients
+
+Note: The `robonope_db_path` and other global settings must be defined in the `http` context, while `robonope_enable` can be toggled per location.
 
 ## Platform Support
 

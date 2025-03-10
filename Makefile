@@ -33,6 +33,7 @@ OPENSSL_URL = https://www.openssl.org/source/$(OPENSSL_TAR)
 
 # Database selection (default to SQLite)
 DB_ENGINE ?= sqlite
+DB_PATH ?= $(PWD)/build/demo/db/robonope.db
 
 # Architecture detection and selection
 ARCH ?= $(shell uname -m)
@@ -484,6 +485,26 @@ help:
 	@echo "  make ARCH=arm64 all     - Build for ARM64 architecture"
 	@echo "  make ARCH=x86_64 all    - Build for x86_64 architecture"
 	@echo ""
+	@echo "Demo Commands:"
+	@echo "  make demo-start         - Start the demo server with RoboNope module"
+	@echo "  make demo-test          - Test the module with a disallowed URL"
+	@echo "  make demo-logs          - Show all logged requests in a pager"
+	@echo "  make demo-stop          - Stop the demo server"
+	@echo "  make demo               - Run demo-start and demo-test (but not demo-stop)"
+	@echo ""
+	@echo "Demo Configuration:"
+	@echo "  DB_PATH                 - Override the database path"
+	@echo "  DB_ENGINE               - Select database engine (sqlite or duckdb)"
+	@echo ""
+	@echo "Current Demo Settings:"
+	@echo "  Database Path: $(DB_PATH)"
+	@echo "  Database Engine: $(DB_ENGINE)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  DB_PATH=/tmp/robonope.db make demo-start  - Use custom database location"
+	@echo "  DB_PATH=/tmp/robonope.db make demo-logs   - View logs from custom database"
+	@echo "  make demo-logs                            - View logs from default database"
+	@echo ""
 	@echo "Dependencies:"
 	@echo "  make download           - Download required dependencies"
 	@echo "  make install-deps       - Install system dependencies"
@@ -492,9 +513,6 @@ help:
 	@echo "Testing:"
 	@echo "  make test               - Run all tests"
 	@echo "  make test-robonope-only - Run RoboNope module tests"
-	@echo ""
-	@echo "Demo:"
-	@echo "  make demo URL=http://localhost:8080/path - Run a demo with the specified URL"
 	@echo ""
 	@echo "Distribution:"
 	@echo "  make release            - Create a standalone distribution package"
@@ -506,14 +524,8 @@ help:
 	@echo ""
 	@echo "Cleaning:"
 	@echo "  make clean              - Clean build artifacts"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make DB_ENGINE=duckdb install-deps  - Install dependencies for DuckDB"
-	@echo "  make ARCH=arm64 all                 - Build for ARM64 architecture"
-	@echo "  make demo URL=http://localhost:8080/secret.html - Test with a specific URL"
-	@echo ""
-	@echo "Generating headers:"
-	@echo "  make generate-headers    - Generate NGINX headers"
+	@echo "  make clean-demo         - Clean demo environment"
+	@echo "  make clean-build        - Force a complete rebuild"
 	@echo ""
 	@echo "Environment variables are automatically set for library paths."
 	@echo "Current settings:"
@@ -521,7 +533,6 @@ help:
 	@echo "  Architecture: $(ARCH)"
 	@echo "  PCRE library: $(PCRE_LIB_PATH)"
 	@echo "  PCRE include: $(PCRE_INCLUDE_PATH)"
-	@echo "  Database engine: $(DB_ENGINE)"
 	@echo ""
 
 # Pre-build checks
@@ -674,8 +685,8 @@ build-unity:
 	cd $(UNITY_SRC) && cc -c src/unity.c -o build/unity.o
 	cd $(UNITY_SRC) && ar rcs build/libunity.a build/unity.o
 
-# Demo target to test the module with a specific URL
-demo: build
+# Demo targets to test the module
+demo-start: build
 	@echo "Using existing binaries:"
 	@echo "  Module: build/nginx-1.24.0/objs/ngx_http_robonope_module.so"
 	@echo "  Nginx:  build/nginx-1.24.0/objs/nginx"
@@ -683,51 +694,66 @@ demo: build
 	@mkdir -p build/demo/conf
 	@mkdir -p build/demo/html
 	@mkdir -p build/demo/logs
+	@mkdir -p $(dir $(DB_PATH))
 	@cp examples/static/* build/demo/html/ || true
+	@cp examples/robots.txt build/demo/html/ || true
 	@echo "Creating mime.types file..."
 	@echo "types {" > build/demo/conf/mime.types
 	@echo "    text/html                             html htm shtml;" >> build/demo/conf/mime.types
 	@echo "    text/css                              css;" >> build/demo/conf/mime.types
-	@echo "    text/xml                              xml;" >> build/demo/conf/mime.types
-	@echo "    image/gif                             gif;" >> build/demo/conf/mime.types
-	@echo "    image/jpeg                            jpeg jpg;" >> build/demo/conf/mime.types
-	@echo "    application/javascript                 js;" >> build/demo/conf/mime.types
-	@echo "    text/plain                            txt;" >> build/demo/conf/mime.types
-	@echo "    image/png                             png;" >> build/demo/conf/mime.types
-	@echo "    image/x-icon                          ico;" >> build/demo/conf/mime.types
-	@echo "    application/pdf                       pdf;" >> build/demo/conf/mime.types
-	@echo "    application/zip                       zip;" >> build/demo/conf/mime.types
 	@echo "}" >> build/demo/conf/mime.types
 	@echo "Creating nginx.conf file..."
-	@echo "worker_processes  1;" > build/demo/conf/nginx.conf
-	@echo "error_log logs/error.log debug;" >> build/demo/conf/nginx.conf
-	@echo "pid nginx.pid;" >> build/demo/conf/nginx.conf
-	@echo "load_module $(PWD)/build/nginx-1.24.0/objs/ngx_http_robonope_module.so;" >> build/demo/conf/nginx.conf
-	@echo "events {" >> build/demo/conf/nginx.conf
-	@echo "    worker_connections  1024;" >> build/demo/conf/nginx.conf
-	@echo "}" >> build/demo/conf/nginx.conf
+	@echo "load_module $(PWD)/build/nginx-1.24.0/objs/ngx_http_robonope_module.so;" > build/demo/conf/nginx.conf
+	@echo "events { worker_connections 1024; }" >> build/demo/conf/nginx.conf
 	@echo "http {" >> build/demo/conf/nginx.conf
-	@echo "    include       mime.types;" >> build/demo/conf/nginx.conf
-	@echo "    default_type  application/octet-stream;" >> build/demo/conf/nginx.conf
-	@echo "    access_log logs/access.log;" >> build/demo/conf/nginx.conf
-	@echo "    sendfile        on;" >> build/demo/conf/nginx.conf
-	@echo "    keepalive_timeout  65;" >> build/demo/conf/nginx.conf
-	@echo "    robonope_robots_path $(PWD)/examples/robots.txt;" >> build/demo/conf/nginx.conf
-	@echo "    robonope_db_path $(PWD)/build/demo/robonope.db;" >> build/demo/conf/nginx.conf
-	@echo "    robonope_static_content_path $(PWD)/examples/static;" >> build/demo/conf/nginx.conf
-	@echo "    robonope_dynamic_content on;" >> build/demo/conf/nginx.conf
+	@echo "    include mime.types;" >> build/demo/conf/nginx.conf
+	@echo "    default_type application/octet-stream;" >> build/demo/conf/nginx.conf
+	@echo "    # RoboNope configuration" >> build/demo/conf/nginx.conf
+	@echo "    robonope_enable on;" >> build/demo/conf/nginx.conf
+	@echo "    robonope_robots_path $(PWD)/build/demo/html/robots.txt;" >> build/demo/conf/nginx.conf
+	@echo "    robonope_db_path $(DB_PATH);" >> build/demo/conf/nginx.conf
+	@echo "    # Rate limiting zones" >> build/demo/conf/nginx.conf
+	@echo "    limit_req_zone \$$binary_remote_addr zone=robonope_limit:10m rate=1r/s;" >> build/demo/conf/nginx.conf
 	@echo "    server {" >> build/demo/conf/nginx.conf
-	@echo "        listen       8080;" >> build/demo/conf/nginx.conf
-	@echo "        server_name  localhost;" >> build/demo/conf/nginx.conf
-	@echo "        root $(PWD)/build/demo/html;" >> build/demo/conf/nginx.conf
+	@echo "        listen 8080;" >> build/demo/conf/nginx.conf
+	@echo "        server_name localhost;" >> build/demo/conf/nginx.conf
+	@echo "        root html;" >> build/demo/conf/nginx.conf
+	@echo "        # Rate limiting for disallowed paths" >> build/demo/conf/nginx.conf
+	@echo "        location ~ ^/(norobots|private|admin|secret-data|internal)/ {" >> build/demo/conf/nginx.conf
+	@echo "            limit_req zone=robonope_limit burst=5 nodelay;" >> build/demo/conf/nginx.conf
+	@echo "            robonope_enable on;" >> build/demo/conf/nginx.conf
+	@echo "        }" >> build/demo/conf/nginx.conf
+	@echo "        # Default location" >> build/demo/conf/nginx.conf
 	@echo "        location / {" >> build/demo/conf/nginx.conf
 	@echo "            robonope_enable on;" >> build/demo/conf/nginx.conf
-	@echo "            try_files \$$uri \$$uri/ =404;" >> build/demo/conf/nginx.conf
 	@echo "        }" >> build/demo/conf/nginx.conf
 	@echo "    }" >> build/demo/conf/nginx.conf
 	@echo "}" >> build/demo/conf/nginx.conf
-	@echo "Starting nginx with RoboNope module on port 8080..."
-	@build/nginx-1.24.0/objs/nginx -c $(PWD)/build/demo/conf/nginx.conf -p $(PWD)/build/demo
+	@echo "Starting Nginx with RoboNope module..."
+	@cd build/demo && ../../build/nginx-1.24.0/objs/nginx -p . -c conf/nginx.conf
+	@echo "Demo server started on http://localhost:8080"
+
+demo-test:
+	@echo "Testing RoboNope with a disallowed URL..."
+	@curl -A "Googlebot" -s "http://localhost:8080/norobots/test.html"
+	@echo "\nChecking database for logged requests..."
+	@sqlite3 $(DB_PATH) 'SELECT * FROM requests;'
+
+demo-logs:
+	@echo "Showing all logged requests..."
+	@echo "Database: $(DB_PATH)"
+	@echo "\nFormat: ID|Timestamp|IP|User-Agent|URL|Matched Pattern\n"
+	@sqlite3 $(DB_PATH) 'SELECT * FROM requests;' | less -S
+
+demo-stop:
+	@echo "Stopping demo server..."
+	@pkill nginx || true
+	@sleep 2
+	@echo "Demo server stopped"
+
+# Alias for backward compatibility
+demo: demo-start demo-test
+	@echo "Demo completed. Run 'make demo-stop' to shutdown the server."
 
 # Add clean-build target for explicit rebuilds
 .PHONY: clean-build

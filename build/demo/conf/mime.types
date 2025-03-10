@@ -1,13 +1,4 @@
 types {
     text/html                             html htm shtml;
     text/css                              css;
-    text/xml                              xml;
-    image/gif                             gif;
-    image/jpeg                            jpeg jpg;
-    application/javascript                 js;
-    text/plain                            txt;
-    image/png                             png;
-    image/x-icon                          ico;
-    application/pdf                       pdf;
-    application/zip                       zip;
 }
