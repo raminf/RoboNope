@@ -1,8 +1,6 @@
 # Build artifacts
-build/nginx-*/
-build/pcre-*/
-build/openssl-*/
-build/unity/*.o
+build/
+!build/.gitkeep
 dist/
 release/
 *.so
@@ -20,11 +18,13 @@ release/
 *.hex
 
 # Demo artifacts
-demo/logs/
-demo/response.html
-demo/robonope.db
-demo/nginx.conf
-demo/*.bak
+build/demo/conf/
+build/demo/html/
+build/demo/logs/
+build/demo/db/
+build/demo/nginx.conf
+build/demo/mime.types
+build/demo/*.bak
 
 # Distribution packages
 robonope-module-*.tar.gz
@@ -51,7 +51,6 @@ node_modules/
 vendor/
 
 # Third-party dependencies (to be managed as git submodules)
-# Note: If using git submodules, these should be commented out
 # deps/Unity/  # Now managed as a git submodule
 deps/pcre/
 deps/openssl/
@@ -135,4 +134,4 @@ libtool
 
 # Keep these directories (but not their contents)
 !build/.gitkeep
-!demo/.gitkeep 
+!build/demo/.gitkeep 

@@ -380,17 +380,53 @@ release: build
 	@echo "To install on a target system, extract the package and run ./install.sh"
 
 # Clean targets
-.PHONY: clean clean-demo standalone-clean
+.PHONY: clean clean-demo standalone-clean clean-build
 
 clean:
-	rm -rf build/demo standalone
-	rm -f tests/unit/test_robonope
-	rm -f tests/integration/nginx_test.conf tests/integration/test.db
-	rm -rf tests/integration/www
+	@echo "Cleaning build artifacts..."
+	rm -rf $(BUILD_DIR)/nginx-* $(BUILD_DIR)/pcre-* $(BUILD_DIR)/openssl-*
+	rm -f $(BUILD_DIR)/*.tar.gz
+	rm -f *.o *.a *.so *.lo *.la *.dylib
+	rm -rf $(DIST_DIR)
+	rm -rf release
 
-clean-demo: clean
+clean-demo: 
+	@echo "Cleaning demo environment..."
+	@if [ -f "build/demo/conf/nginx.conf" ]; then \
+		cd build/demo && ../../build/nginx-*/objs/nginx -p . -c conf/nginx.conf -s stop 2>/dev/null || true; \
+	fi
+	rm -rf build/demo/conf
+	rm -rf build/demo/html
+	rm -rf build/demo/logs
+	rm -rf build/demo/db
+	rm -f build/demo/nginx.conf
+	rm -f build/demo/mime.types
+	rm -f build/demo/*.bak
+	mkdir -p build/demo
 
 standalone-clean: clean
+	rm -rf standalone
+
+clean-build:
+	@echo "Cleaning build directory..."
+	rm -rf $(BUILD_DIR)
+	@echo "Starting fresh build..."
+	$(MAKE) download
+	$(MAKE) build-pcre
+	$(MAKE) configure-nginx
+	cd $(NGINX_SRC) && $(MAKE)
+	@if [ ! -f "$(DEMO_NGINX)" ]; then \
+		echo "ERROR: Failed to build nginx binary. Check build logs for errors."; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
+		echo "ERROR: Failed to build module. Check build logs for errors."; \
+		exit 1; \
+	fi
+	@chmod +x $(DEMO_NGINX)
+	@echo "Build completed successfully:"
+	@echo "  Module: $(MODULE_OUTPUT)"
+	@echo "  Nginx:  $(DEMO_NGINX)"
 
 # Add standalone targets
 .PHONY: standalone-build standalone-install
