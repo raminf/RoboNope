@@ -356,7 +356,7 @@ ngx_http_robonope_handler(ngx_http_request_t *r)
     return NGX_DECLINED;
 }
 
-static ngx_int_t
+ngx_int_t
 ngx_http_robonope_load_robots(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *robots_path)
 {
     ngx_fd_t fd;
