@@ -138,4 +138,66 @@ clean: test-clean
 	rm -rf $(DIST_DIR)
 	rm -rf release
 
-# ... rest of the file remains unchanged ...
+# Standalone configuration
+STANDALONE_DIR = standalone
+STANDALONE_OBJS_DIR = $(STANDALONE_DIR)/objs
+STANDALONE_MODULE = $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.so
+
+# Default target
+.PHONY: all
+all: $(if $(filter 1,$(STANDALONE)),standalone-build,build)
+
+# Standalone targets
+.PHONY: standalone-build standalone-prepare
+standalone-prepare:
+	@mkdir -p $(STANDALONE_OBJS_DIR)
+	@if [ "$(OS)" = "Darwin" ]; then \
+		nginx_inc_path=$$(brew --prefix nginx)/include/nginx; \
+	else \
+		nginx_inc_path=/usr/include/nginx; \
+	fi; \
+	if [ ! -d "$$nginx_inc_path" ]; then \
+		echo "Error: Cannot find Nginx headers at $$nginx_inc_path"; \
+		echo "Please ensure nginx-dev package is installed"; \
+		exit 1; \
+	fi
+
+standalone-build: standalone-prepare
+	@echo "Building standalone module..."
+	@if [ "$(OS)" = "Darwin" ]; then \
+		nginx_inc_path=$$(brew --prefix nginx)/include/nginx; \
+		$(CC) -c -fPIC \
+			-I$$nginx_inc_path \
+			-I$$nginx_inc_path/event \
+			-I$$nginx_inc_path/os/unix \
+			-I$(PCRE_INCLUDE_PATH) \
+			-I$(OPENSSL_ROOT_DIR)/include \
+			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
+			src/ngx_http_robonope_module.c; \
+		$(CC) -shared \
+			-o $(STANDALONE_MODULE) \
+			$(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
+			-L$(PCRE_LIB_DIR) -lpcre \
+			-L$(OPENSSL_ROOT_DIR)/lib -lssl -lcrypto; \
+	else \
+		nginx_inc_path=/usr/include/nginx; \
+		$(CC) -c -fPIC \
+			-I$$nginx_inc_path \
+			-I$$nginx_inc_path/event \
+			-I$$nginx_inc_path/os/unix \
+			-I$(PCRE_INCLUDE_PATH) \
+			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
+			src/ngx_http_robonope_module.c; \
+		$(CC) -shared \
+			-o $(STANDALONE_MODULE) \
+			$(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
+			-L$(PCRE_LIB_DIR) -lpcre; \
+	fi
+	@echo "Standalone module built successfully at $(STANDALONE_MODULE)"
+
+# Add standalone clean to clean target
+clean: standalone-clean
+
+.PHONY: standalone-clean
+standalone-clean:
+	rm -rf $(STANDALONE_DIR)
