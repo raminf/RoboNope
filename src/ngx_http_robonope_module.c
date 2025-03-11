@@ -14,6 +14,11 @@
 
 #include "ngx_http_robonope_module.h"
 
+/* Module configuration */
+#ifndef NGX_HTTP_SSI
+#define NGX_HTTP_SSI 0
+#endif
+
 // Function declarations for internal use only
 static void *ngx_http_robonope_create_loc_conf(ngx_conf_t *cf);
 static char *ngx_http_robonope_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);

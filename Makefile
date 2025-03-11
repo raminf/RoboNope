@@ -224,6 +224,9 @@ standalone-build: standalone-prepare
 			-I$(OPENSSL_ROOT_DIR)/include \
 			-DNGINX_PLUGIN \
 			-DNGX_PLUGIN_NO_MAIN \
+			-DNGX_HTTP_HEADERS=1 \
+			-DNGX_HTTP_CACHE=1 \
+			-DNGX_HTTP_SSI=0 \
 			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
 			src/ngx_http_robonope_module.c; \
 		$(CC) -shared \
@@ -244,6 +247,9 @@ standalone-build: standalone-prepare
 			-I$(PCRE_INCLUDE_PATH) \
 			-DNGINX_PLUGIN \
 			-DNGX_PLUGIN_NO_MAIN \
+			-DNGX_HTTP_HEADERS=1 \
+			-DNGX_HTTP_CACHE=1 \
+			-DNGX_HTTP_SSI=0 \
 			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
 			src/ngx_http_robonope_module.c; \
 		$(CC) -shared \
