@@ -152,20 +152,36 @@ all: $(if $(filter 1,$(STANDALONE)),standalone-build,build)
 standalone-prepare:
 	@mkdir -p $(STANDALONE_OBJS_DIR)
 	@if [ "$(OS)" = "Darwin" ]; then \
-		nginx_inc_path=$$(brew --prefix nginx)/include/nginx; \
+		if [ -d "$$(brew --prefix)/opt/nginx/include/nginx" ]; then \
+			nginx_inc_path="$$(brew --prefix)/opt/nginx/include/nginx"; \
+		elif [ -d "$$(brew --prefix)/include/nginx" ]; then \
+			nginx_inc_path="$$(brew --prefix)/include/nginx"; \
+		else \
+			echo "Error: Cannot find Nginx headers. Tried:"; \
+			echo "  - $$(brew --prefix)/opt/nginx/include/nginx"; \
+			echo "  - $$(brew --prefix)/include/nginx"; \
+			echo "Please ensure nginx is installed via brew"; \
+			exit 1; \
+		fi \
 	else \
-		nginx_inc_path=/usr/include/nginx; \
+		if [ -d "/usr/include/nginx" ]; then \
+			nginx_inc_path="/usr/include/nginx"; \
+		else \
+			echo "Error: Cannot find Nginx headers at /usr/include/nginx"; \
+			echo "Please ensure nginx-dev package is installed"; \
+			exit 1; \
+		fi \
 	fi; \
-	if [ ! -d "$$nginx_inc_path" ]; then \
-		echo "Error: Cannot find Nginx headers at $$nginx_inc_path"; \
-		echo "Please ensure nginx-dev package is installed"; \
-		exit 1; \
-	fi
+	echo "Found nginx headers at $$nginx_inc_path"
 
 standalone-build: standalone-prepare
 	@echo "Building standalone module..."
 	@if [ "$(OS)" = "Darwin" ]; then \
-		nginx_inc_path=$$(brew --prefix nginx)/include/nginx; \
+		if [ -d "$$(brew --prefix)/opt/nginx/include/nginx" ]; then \
+			nginx_inc_path="$$(brew --prefix)/opt/nginx/include/nginx"; \
+		else \
+			nginx_inc_path="$$(brew --prefix)/include/nginx"; \
+		fi; \
 		$(CC) -c -fPIC \
 			-I$$nginx_inc_path \
 			-I$$nginx_inc_path/event \
@@ -180,7 +196,7 @@ standalone-build: standalone-prepare
 			-L$(PCRE_LIB_DIR) -lpcre \
 			-L$(OPENSSL_ROOT_DIR)/lib -lssl -lcrypto; \
 	else \
-		nginx_inc_path=/usr/include/nginx; \
+		nginx_inc_path="/usr/include/nginx"; \
 		$(CC) -c -fPIC \
 			-I$$nginx_inc_path \
 			-I$$nginx_inc_path/event \

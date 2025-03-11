@@ -19,7 +19,10 @@ jobs:
               sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
           - os: macos-latest
             install: |
-              brew install pcre openssl@1.1 sqlite3 wget curl nginx
+              brew install pcre openssl@1.1 sqlite3 wget curl
+              brew install nginx
+              # Force link nginx to ensure headers are available
+              brew link nginx
               echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
               echo "PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib" >> $GITHUB_ENV
     
