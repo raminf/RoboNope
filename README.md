@@ -17,7 +17,7 @@ According to [W3Techs](https://w3techs.com/technologies/overview/web_server) the
 - [Litespeed](https://www.litespeedtech.com/products/litespeed-web-server) (14.5%)
 - [Node.js](https://nodejs.org) (4.2%)
 
-This version works with `nginx`. We will be releasing a separate version for Apache with the same functionality.
+This version works with `nginx`. Plan is to release separate versions for other servers with the same functionality.
 
 ## Features
 
@@ -54,7 +54,7 @@ make check-deps
 # Build with SQLite (default)
 make
 
-# Or build with DuckDB
+# Or build with DuckDB (work in progress)
 make DB_ENGINE=duckdb all
 
 # For specific architectures
@@ -79,7 +79,7 @@ make test-robonope-only
 
 The demo will:
 1. Set up a test environment
-2. Start Nginx with the RoboNope module on port 8080
+2. Start a local build of Nginx with the RoboNope module on port 8080
 3. Send a test request to a disallowed path
 4. Show the results
 
@@ -90,7 +90,7 @@ make demo-start
 # Test with a disallowed URL
 make demo-test
 
-# View all logged requests (with pagination)
+# View all logged requests (with pagination from the database)
 make demo-logs
 
 # Stop the demo server
@@ -115,7 +115,7 @@ You can customize the demo environment using these variables:
 
 - `DB_ENGINE`: Select the database engine (sqlite or duckdb)
   ```bash
-  # Build and run with DuckDB
+  # Build and run with DuckDB (work in progress)
   DB_ENGINE=duckdb make all
   make demo-start
   ```
@@ -214,7 +214,7 @@ load_module modules/ngx_http_robonope_module.so;
 http {
     # ... other settings ...
 
-    # Rate limiting configuration for disallowed paths
+    # Optional rate limiting configuration for disallowed paths
     limit_req_zone $binary_remote_addr zone=robonope_limit:10m rate=1r/s;
 
     # RoboNope configuration
