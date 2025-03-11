@@ -24,8 +24,13 @@ jobs:
               # Force unlink and relink nginx to ensure headers are available
               brew unlink nginx || true
               brew link --force nginx
-              # Export nginx include path
-              echo "NGINX_INC_PATH=$(brew --prefix nginx)/include/nginx" >> $GITHUB_ENV
+              # Verify nginx installation and headers
+              nginx_prefix=$(brew --prefix nginx)
+              echo "Nginx prefix: $nginx_prefix"
+              ls -la $nginx_prefix/include || true
+              ls -la $nginx_prefix/include/nginx || true
+              # Export paths
+              echo "NGINX_INC_PATH=$nginx_prefix/include/nginx" >> $GITHUB_ENV
               echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
               echo "PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib" >> $GITHUB_ENV
     
@@ -46,9 +51,13 @@ jobs:
                STANDALONE=1 \
                all
         else
-          make PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib \
-               OPENSSL_ROOT_DIR=$(brew --prefix openssl@1.1) \
-               NGINX_INC_PATH=$(brew --prefix nginx)/include/nginx \
+          echo "Debug: Environment variables:"
+          echo "NGINX_INC_PATH=$NGINX_INC_PATH"
+          echo "OPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR"
+          echo "PCRE_LIB_PATH=$PCRE_LIB_PATH"
+          make PCRE_LIB_PATH="$PCRE_LIB_PATH" \
+               OPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR" \
+               NGINX_INC_PATH="$NGINX_INC_PATH" \
                STANDALONE=1 \
                all
         fi

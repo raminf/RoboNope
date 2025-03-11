@@ -152,24 +152,39 @@ all: $(if $(filter 1,$(STANDALONE)),standalone-build,build)
 standalone-prepare:
 	@mkdir -p $(STANDALONE_OBJS_DIR)
 	@if [ "$(OS)" = "Darwin" ]; then \
-		if [ ! -z "$(NGINX_INC_PATH)" ] && [ -d "$(NGINX_INC_PATH)" ]; then \
-			nginx_inc_path="$(NGINX_INC_PATH)"; \
-		elif [ -d "$$(brew --prefix)/opt/nginx/include/nginx" ]; then \
-			nginx_inc_path="$$(brew --prefix)/opt/nginx/include/nginx"; \
-		elif [ -d "$$(brew --prefix)/include/nginx" ]; then \
-			nginx_inc_path="$$(brew --prefix)/include/nginx"; \
-		elif [ -d "/usr/local/include/nginx" ]; then \
-			nginx_inc_path="/usr/local/include/nginx"; \
-		else \
-			echo "Error: Cannot find Nginx headers. Tried:"; \
-			echo "  - $(NGINX_INC_PATH) (from env)"; \
-			echo "  - $$(brew --prefix)/opt/nginx/include/nginx"; \
-			echo "  - $$(brew --prefix)/include/nginx"; \
-			echo "  - /usr/local/include/nginx"; \
-			echo "Please ensure nginx is installed via brew"; \
-			exit 1; \
+		echo "Debug: NGINX_INC_PATH from env = $(NGINX_INC_PATH)"; \
+		echo "Debug: Brew prefix = $$(brew --prefix)"; \
+		if [ ! -z "$(NGINX_INC_PATH)" ]; then \
+			echo "Debug: Checking NGINX_INC_PATH=$(NGINX_INC_PATH)"; \
+			ls -la "$(NGINX_INC_PATH)" || true; \
+			if [ -d "$(NGINX_INC_PATH)" ]; then \
+				nginx_inc_path="$(NGINX_INC_PATH)"; \
+			else \
+				echo "Warning: NGINX_INC_PATH directory not found"; \
+			fi; \
+		fi; \
+		if [ -z "$$nginx_inc_path" ]; then \
+			brew_nginx_path="$$(brew --prefix nginx)/include/nginx"; \
+			echo "Debug: Checking brew nginx path=$$brew_nginx_path"; \
+			ls -la "$$brew_nginx_path" || true; \
+			if [ -d "$$brew_nginx_path" ]; then \
+				nginx_inc_path="$$brew_nginx_path"; \
+			elif [ -d "$$(brew --prefix)/include/nginx" ]; then \
+				nginx_inc_path="$$(brew --prefix)/include/nginx"; \
+			elif [ -d "/usr/local/include/nginx" ]; then \
+				nginx_inc_path="/usr/local/include/nginx"; \
+			else \
+				echo "Error: Cannot find Nginx headers. Tried:"; \
+				echo "  - $(NGINX_INC_PATH) (from env)"; \
+				echo "  - $$(brew --prefix)/opt/nginx/include/nginx"; \
+				echo "  - $$(brew --prefix)/include/nginx"; \
+				echo "  - /usr/local/include/nginx"; \
+				echo "Please ensure nginx is installed via brew"; \
+				exit 1; \
+			fi; \
 		fi; \
 		echo "Found nginx headers at $$nginx_inc_path"; \
+		ls -la "$$nginx_inc_path" || true; \
 	else \
 		if [ -d "/usr/include/nginx" ]; then \
 			nginx_inc_path="/usr/include/nginx"; \
