@@ -200,10 +200,11 @@ standalone-build: standalone-prepare
 	@echo "Building standalone module..."
 	@if [ "$(OS)" = "Darwin" ]; then \
 		$(CC) -c -fPIC \
-			-I$(NGINX_INC_PATH) \
-			-I$(NGINX_INC_PATH)/nginx \
-			-I$(NGINX_INC_PATH)/nginx/event \
-			-I$(NGINX_INC_PATH)/nginx/os/unix \
+			-I$(NGINX_INC_PATH)/core \
+			-I$(NGINX_INC_PATH)/event \
+			-I$(NGINX_INC_PATH)/http \
+			-I$(NGINX_INC_PATH)/os/unix \
+			-I$(NGINX_INC_PATH)/objs \
 			-I$(PCRE_INCLUDE_PATH) \
 			-I$(OPENSSL_ROOT_DIR)/include \
 			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \

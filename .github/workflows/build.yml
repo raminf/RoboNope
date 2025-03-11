@@ -27,16 +27,20 @@ jobs:
               echo "Checking nginx paths:"
               nginx_prefix=$(brew --prefix nginx)
               echo "Nginx prefix: $nginx_prefix"
-              ls -la $nginx_prefix || true
-              ls -la $nginx_prefix/include || true
-              # Create nginx include directory if it doesn't exist
-              sudo mkdir -p $nginx_prefix/include/nginx
-              # Copy nginx headers from Cellar
-              nginx_version=$(brew list nginx --versions | awk '{print $2}')
-              sudo cp -r /opt/homebrew/Cellar/nginx/$nginx_version/include/* $nginx_prefix/include/
+              # Download and extract nginx source for headers
+              nginx_version=$(nginx -v 2>&1 | cut -d'/' -f2)
+              echo "Nginx version: $nginx_version"
+              wget "https://nginx.org/download/nginx-${nginx_version}.tar.gz"
+              tar xzf nginx-${nginx_version}.tar.gz
+              sudo mkdir -p $nginx_prefix/include
+              sudo cp -r nginx-${nginx_version}/src/core $nginx_prefix/include/
+              sudo cp -r nginx-${nginx_version}/src/event $nginx_prefix/include/
+              sudo cp -r nginx-${nginx_version}/src/http $nginx_prefix/include/
+              sudo cp -r nginx-${nginx_version}/src/os $nginx_prefix/include/
+              sudo cp -r nginx-${nginx_version}/objs $nginx_prefix/include/
               # Verify headers
               echo "Verifying nginx headers:"
-              ls -la $nginx_prefix/include/nginx || true
+              ls -la $nginx_prefix/include || true
               # Export paths
               echo "NGINX_INC_PATH=$nginx_prefix/include" >> $GITHUB_ENV
               echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
