@@ -199,15 +199,11 @@ standalone-prepare:
 standalone-build: standalone-prepare
 	@echo "Building standalone module..."
 	@if [ "$(OS)" = "Darwin" ]; then \
-		if [ -d "$$(brew --prefix)/opt/nginx/include/nginx" ]; then \
-			nginx_inc_path="$$(brew --prefix)/opt/nginx/include/nginx"; \
-		else \
-			nginx_inc_path="$$(brew --prefix)/include/nginx"; \
-		fi; \
 		$(CC) -c -fPIC \
-			-I$$nginx_inc_path \
-			-I$$nginx_inc_path/event \
-			-I$$nginx_inc_path/os/unix \
+			-I$(NGINX_INC_PATH) \
+			-I$(NGINX_INC_PATH)/nginx \
+			-I$(NGINX_INC_PATH)/nginx/event \
+			-I$(NGINX_INC_PATH)/nginx/os/unix \
 			-I$(PCRE_INCLUDE_PATH) \
 			-I$(OPENSSL_ROOT_DIR)/include \
 			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \

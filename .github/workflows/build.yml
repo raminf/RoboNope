@@ -21,16 +21,24 @@ jobs:
             install: |
               brew install pcre openssl@1.1 sqlite3 wget curl
               brew install nginx
-              # Force unlink and relink nginx to ensure headers are available
-              brew unlink nginx || true
-              brew link --force nginx
-              # Verify nginx installation and headers
+              # Debug nginx installation
+              echo "Nginx installation details:"
+              brew list nginx || true
+              echo "Checking nginx paths:"
               nginx_prefix=$(brew --prefix nginx)
               echo "Nginx prefix: $nginx_prefix"
+              ls -la $nginx_prefix || true
               ls -la $nginx_prefix/include || true
+              # Create nginx include directory if it doesn't exist
+              sudo mkdir -p $nginx_prefix/include/nginx
+              # Copy nginx headers from Cellar
+              nginx_version=$(brew list nginx --versions | awk '{print $2}')
+              sudo cp -r /opt/homebrew/Cellar/nginx/$nginx_version/include/* $nginx_prefix/include/
+              # Verify headers
+              echo "Verifying nginx headers:"
               ls -la $nginx_prefix/include/nginx || true
               # Export paths
-              echo "NGINX_INC_PATH=$nginx_prefix/include/nginx" >> $GITHUB_ENV
+              echo "NGINX_INC_PATH=$nginx_prefix/include" >> $GITHUB_ENV
               echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
               echo "PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib" >> $GITHUB_ENV
     
