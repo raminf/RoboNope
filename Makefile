@@ -199,6 +199,10 @@ standalone-prepare:
 standalone-build: standalone-prepare
 	@echo "Building standalone module..."
 	@if [ "$(OS)" = "Darwin" ]; then \
+		echo "Debug: Using include paths:"; \
+		echo "NGINX_INC_PATH=$(NGINX_INC_PATH)"; \
+		echo "PCRE_INCLUDE_PATH=$(PCRE_INCLUDE_PATH)"; \
+		echo "OPENSSL_ROOT_DIR=$(OPENSSL_ROOT_DIR)"; \
 		$(CC) -c -fPIC \
 			-I$(NGINX_INC_PATH)/core \
 			-I$(NGINX_INC_PATH)/event \
@@ -207,6 +211,7 @@ standalone-build: standalone-prepare
 			-I$(NGINX_INC_PATH)/objs \
 			-I$(PCRE_INCLUDE_PATH) \
 			-I$(OPENSSL_ROOT_DIR)/include \
+			-DNGX_HTTP_MODULE=1 \
 			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
 			src/ngx_http_robonope_module.c; \
 		$(CC) -shared \

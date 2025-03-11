@@ -32,6 +32,15 @@ jobs:
               echo "Nginx version: $nginx_version"
               wget "https://nginx.org/download/nginx-${nginx_version}.tar.gz"
               tar xzf nginx-${nginx_version}.tar.gz
+              # Configure nginx to generate headers
+              cd nginx-${nginx_version}
+              ./configure \
+                --prefix=$nginx_prefix \
+                --with-pcre \
+                --with-http_ssl_module \
+                --with-openssl=$(brew --prefix openssl@1.1)
+              cd ..
+              # Create include directory and copy headers
               sudo mkdir -p $nginx_prefix/include
               sudo cp -r nginx-${nginx_version}/src/core $nginx_prefix/include/
               sudo cp -r nginx-${nginx_version}/src/event $nginx_prefix/include/
