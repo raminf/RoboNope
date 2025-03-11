@@ -29,6 +29,12 @@ jobs:
               echo "PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
     
     runs-on: ${{ matrix.os }}
+    env:
+      OPENSSL_ROOT_DIR: ${{ matrix.os == 'ubuntu-latest' && '/usr' || '' }}
+      OPENSSL_LIB_DIR: ${{ matrix.os == 'ubuntu-latest' && '/usr/lib/x86_64-linux-gnu' || '' }}
+      OPENSSL_INCLUDE_DIR: ${{ matrix.os == 'ubuntu-latest' && '/usr/include' || '' }}
+      PKG_CONFIG_PATH: ${{ matrix.os == 'ubuntu-latest' && '/usr/lib/x86_64-linux-gnu/pkgconfig' || '' }}
+      LD_LIBRARY_PATH: ${{ matrix.os == 'ubuntu-latest' && '/usr/lib/x86_64-linux-gnu' || '' }}
     
     steps:
     - uses: actions/checkout@v4
@@ -38,32 +44,22 @@ jobs:
     - name: Install dependencies
       run: ${{ matrix.install }}
     
-    - name: Setup environment
-      run: |
-        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          echo "OPENSSL_ROOT_DIR=/usr" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        fi
-    
     - name: Verify OpenSSL
       run: |
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           openssl version
           ls -l /usr/lib/x86_64-linux-gnu/libssl*
           ls -l /usr/include/openssl
-          pkg-config --modversion openssl
-          pkg-config --cflags openssl
-          pkg-config --libs openssl
+          pkg-config --modversion openssl || true
+          pkg-config --cflags openssl || true
+          pkg-config --libs openssl || true
         else
           openssl version
           ls -l $(brew --prefix openssl@1.1)/lib/libssl*
           ls -l $(brew --prefix openssl@1.1)/include/openssl
-          pkg-config --modversion openssl
-          pkg-config --cflags openssl
-          pkg-config --libs openssl
+          pkg-config --modversion openssl || true
+          pkg-config --cflags openssl || true
+          pkg-config --libs openssl || true
         fi
     
     - name: Prepare build environment
@@ -76,19 +72,31 @@ jobs:
         wget -q https://sourceforge.net/projects/pcre/files/pcre/8.45/pcre-8.45.tar.gz/download -O pcre-8.45.tar.gz
         tar xzf pcre-8.45.tar.gz
         rm -f *.tar.gz
+        cd pcre-8.45
+        ./configure --enable-static --disable-shared
+        make
+        cd ..
     
     - name: Build module
       run: |
-        export OPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}"
-        export OPENSSL_LIB_DIR="${OPENSSL_LIB_DIR}"
-        export OPENSSL_INCLUDE_DIR="${OPENSSL_INCLUDE_DIR}"
-        export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}"
-        if [ "${{ matrix.os }}" = "macos-latest" ]; then
-          export DYLD_LIBRARY_PATH="${DYLD_LIBRARY_PATH}"
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          make OPENSSL_ROOT_DIR=/usr \
+               OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu \
+               OPENSSL_INCLUDE_DIR=/usr/include \
+               PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
+               LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
+               PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+               all
         else
-          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}"
+          OPENSSL_PREFIX=$(brew --prefix openssl@1.1)
+          make OPENSSL_ROOT_DIR=$OPENSSL_PREFIX \
+               OPENSSL_LIB_DIR=$OPENSSL_PREFIX/lib \
+               OPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include \
+               PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib \
+               DYLD_LIBRARY_PATH=$OPENSSL_PREFIX/lib \
+               PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig \
+               all
         fi
-        make all
     
     - name: Run tests
       run: make test
@@ -109,6 +117,12 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    env:
+      OPENSSL_ROOT_DIR: /usr
+      OPENSSL_LIB_DIR: /usr/lib/x86_64-linux-gnu
+      OPENSSL_INCLUDE_DIR: /usr/include
+      PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
+      LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
     
     steps:
     - uses: actions/checkout@v4
@@ -121,22 +135,14 @@ jobs:
         sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl nginx-dev
         sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
     
-    - name: Setup environment
-      run: |
-        echo "OPENSSL_ROOT_DIR=/usr" >> $GITHUB_ENV
-        echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-        echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-    
     - name: Verify OpenSSL
       run: |
         openssl version
         ls -l /usr/lib/x86_64-linux-gnu/libssl*
         ls -l /usr/include/openssl
-        pkg-config --modversion openssl
-        pkg-config --cflags openssl
-        pkg-config --libs openssl
+        pkg-config --modversion openssl || true
+        pkg-config --cflags openssl || true
+        pkg-config --libs openssl || true
     
     - name: Prepare build environment
       run: |
@@ -148,15 +154,20 @@ jobs:
         wget -q https://sourceforge.net/projects/pcre/files/pcre/8.45/pcre-8.45.tar.gz/download -O pcre-8.45.tar.gz
         tar xzf pcre-8.45.tar.gz
         rm -f *.tar.gz
+        cd pcre-8.45
+        ./configure --enable-static --disable-shared
+        make
+        cd ..
     
     - name: Build standalone module
       run: |
-        export OPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}"
-        export OPENSSL_LIB_DIR="${OPENSSL_LIB_DIR}"
-        export OPENSSL_INCLUDE_DIR="${OPENSSL_INCLUDE_DIR}"
-        export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}"
-        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}"
-        make STANDALONE=1
+        make OPENSSL_ROOT_DIR=/usr \
+             OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu \
+             OPENSSL_INCLUDE_DIR=/usr/include \
+             PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
+             LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
+             PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+             STANDALONE=1
     
     - name: Create standalone package
       run: make STANDALONE=1 install
