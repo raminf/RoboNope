@@ -214,6 +214,7 @@ standalone-build: standalone-prepare
 		echo "PCRE_INCLUDE_PATH=$(PCRE_INCLUDE_PATH)"; \
 		echo "OPENSSL_ROOT_DIR=$(OPENSSL_ROOT_DIR)"; \
 		$(CC) -c -fPIC \
+			-I$(NGINX_INC_PATH) \
 			-I$(NGINX_INC_PATH)/core \
 			-I$(NGINX_INC_PATH)/event \
 			-I$(NGINX_INC_PATH)/http \
@@ -221,7 +222,8 @@ standalone-build: standalone-prepare
 			-I$(NGINX_INC_PATH)/objs \
 			-I$(PCRE_INCLUDE_PATH) \
 			-I$(OPENSSL_ROOT_DIR)/include \
-			-DNGX_HTTP_MODULE=1 \
+			-DNGINX_PLUGIN \
+			-DNGX_PLUGIN_NO_MAIN \
 			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
 			src/ngx_http_robonope_module.c; \
 		$(CC) -shared \
@@ -240,7 +242,8 @@ standalone-build: standalone-prepare
 			-I$(NGINX_INC_PATH)/http \
 			-I$(NGINX_INC_PATH)/os/unix \
 			-I$(PCRE_INCLUDE_PATH) \
-			-DNGX_HTTP_MODULE=1 \
+			-DNGINX_PLUGIN \
+			-DNGX_PLUGIN_NO_MAIN \
 			-o $(STANDALONE_OBJS_DIR)/ngx_http_robonope_module.o \
 			src/ngx_http_robonope_module.c; \
 		$(CC) -shared \

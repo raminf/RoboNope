@@ -6,8 +6,6 @@
 #include <string.h>
 #include <sys/stat.h>  /* For stat() */
 
-#define NGINX_BUILD  /* Define this to use static function declarations */
-
 #ifdef ROBONOPE_USE_DUCKDB
 #include <duckdb.h>
 #else
