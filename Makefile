@@ -233,18 +233,15 @@ endef
 
 # Check if system OpenSSL is usable
 HAS_SYSTEM_OPENSSL = $(shell \
-    if [ -n "$(_OPENSSL_ROOT)" ] && [ -n "$(_OPENSSL_INCLUDE)" ] && [ -n "$(_OPENSSL_LIB)" ] && \
-       [ -f "$(_OPENSSL_INCLUDE)/openssl/ssl.h" ] && \
-       ([ -f "$(_OPENSSL_LIB)/libssl.a" ] || \
-        [ -f "$(_OPENSSL_LIB)/libssl.so" ] || \
-        [ -f "$(_OPENSSL_LIB)/libssl.so.3" ] || \
-        [ -f "$(_OPENSSL_LIB)/libssl.3.dylib" ] || \
-        [ -f "$(_OPENSSL_LIB)/libssl.dylib" ]); then \
-        if [ "$$(printf '%s\n%s\n' "$(_OPENSSL_VERSION)" "$(OPENSSL_MIN_VERSION)" | sort -V | head -n1)" = "$(OPENSSL_MIN_VERSION)" ]; then \
-            echo "yes"; \
-        else \
-            echo "no"; \
-        fi; \
+    if [ -n "$(OPENSSL_ROOT_DIR)" ] && [ -n "$(OPENSSL_INCLUDE_DIR)" ] && [ -n "$(OPENSSL_LIB_DIR)" ] && \
+       [ -f "$(OPENSSL_INCLUDE_DIR)/openssl/ssl.h" ] && \
+       ([ -f "$(OPENSSL_LIB_DIR)/libssl.a" ] || \
+        [ -f "$(OPENSSL_LIB_DIR)/libssl.so" ] || \
+        [ -f "$(OPENSSL_LIB_DIR)/libssl.so.1.1" ] || \
+        [ -f "$(OPENSSL_LIB_DIR)/libssl.so.3" ] || \
+        [ -f "$(OPENSSL_LIB_DIR)/libssl.3.dylib" ] || \
+        [ -f "$(OPENSSL_LIB_DIR)/libssl.dylib" ]); then \
+        echo "yes"; \
     else \
         echo "no"; \
     fi)
@@ -289,8 +286,11 @@ $(MODULE_OUTPUT) $(DEMO_NGINX): $(SRC_FILES)
 	@echo "Downloading PCRE source..."
 	cd build && wget -q $(PCRE_URL) -O pcre-8.45.tar.gz
 	cd build && tar xzf pcre-8.45.tar.gz
+	@echo "Downloading OpenSSL source..."
+	cd build && wget -q $(OPENSSL_URL) -O openssl-1.1.1w.tar.gz
+	cd build && tar xzf openssl-1.1.1w.tar.gz
 	@echo "Cleaning up downloaded archives..."
-	cd build && rm -f nginx-1.24.0.tar.gz pcre-8.45.tar.gz
+	cd build && rm -f nginx-1.24.0.tar.gz pcre-8.45.tar.gz openssl-1.1.1w.tar.gz
 	$(MAKE) build-pcre
 	$(MAKE) configure-nginx
 	@echo "Building nginx and modules..."
@@ -604,13 +604,11 @@ download:
 		echo "Downloading PCRE source..."; \
 		cd build && wget -q $(PCRE_URL) -O $(PCRE_TAR); \
 		cd build && tar xzf $(PCRE_TAR); \
-		if [ "$(HAS_SYSTEM_OPENSSL)" != "yes" ]; then \
-			echo "Downloading OpenSSL source..."; \
-			cd build && wget -q $(OPENSSL_URL) -O $(OPENSSL_TAR); \
-			cd build && tar xzf $(OPENSSL_TAR); \
-		fi; \
+		echo "Downloading OpenSSL source..."; \
+		cd build && wget -q $(OPENSSL_URL) -O $(OPENSSL_TAR); \
+		cd build && tar xzf $(OPENSSL_TAR); \
 		echo "Cleaning up downloaded archives..."; \
-		cd build && rm -f $(NGINX_TAR) $(PCRE_TAR) $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),$(OPENSSL_TAR)); \
+		cd build && rm -f $(NGINX_TAR) $(PCRE_TAR) $(OPENSSL_TAR); \
 		touch build/.deps-ready; \
 	else \
 		echo "Using existing dependencies in build directory"; \
@@ -694,9 +692,9 @@ build-openssl:
 		echo "Using existing OpenSSL build"; \
 	fi
 
-# Update configure-nginx target to use built OpenSSL
+# Update configure-nginx target
 .PHONY: configure-nginx
-configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openssl)
+configure-nginx: build-pcre build-openssl
 	@if [ ! -f "$(NGINX_SRC)/Makefile" ]; then \
 		echo "Configuring nginx with RoboNope module..."; \
 		cd $(NGINX_SRC) && \
@@ -706,18 +704,18 @@ configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openss
 				--with-threads \
 				--with-http_ssl_module \
 				--with-pcre=../../$(PCRE_SRC) \
-				$(if $(filter no,$(HAS_SYSTEM_OPENSSL)),--with-openssl=../../$(OPENSSL_SRC)) \
-				--with-cc-opt="-I../../$(PCRE_SRC) $(if $(OPENSSL_INCLUDE_DIR),-I$(OPENSSL_INCLUDE_DIR))" \
-				--with-ld-opt="-L../../$(PCRE_SRC) $(if $(OPENSSL_LIB_DIR),-L$(OPENSSL_LIB_DIR))"; \
+				--with-openssl=../../$(OPENSSL_SRC) \
+				--with-cc-opt="-I../../$(PCRE_SRC)" \
+				--with-ld-opt="-L../../$(PCRE_SRC)"; \
 		else \
 			./configure --add-dynamic-module=../../src \
 				--with-compat \
 				--with-threads \
 				--with-http_ssl_module \
 				--with-pcre=../../$(PCRE_SRC) \
-				$(if $(filter no,$(HAS_SYSTEM_OPENSSL)),--with-openssl=../../$(OPENSSL_SRC)) \
-				--with-cc-opt="-I../../$(PCRE_SRC) $(if $(OPENSSL_INCLUDE_DIR),-I$(OPENSSL_INCLUDE_DIR))" \
-				--with-ld-opt="-L../../$(PCRE_SRC) $(if $(OPENSSL_LIB_DIR),-L$(OPENSSL_LIB_DIR))"; \
+				--with-openssl=../../$(OPENSSL_SRC) \
+				--with-cc-opt="-I../../$(PCRE_SRC)" \
+				--with-ld-opt="-L../../$(PCRE_SRC)"; \
 		fi; \
 	else \
 		echo "Using existing nginx configuration"; \

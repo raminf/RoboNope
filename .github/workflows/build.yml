@@ -17,22 +17,11 @@ jobs:
               sudo apt-get update
               sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl
               sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
-              # Ensure OpenSSL paths are correct
-              echo "OPENSSL_ROOT_DIR=/usr" >> $GITHUB_ENV
-              echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-              echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-              echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           - os: macos-latest
             install: |
               brew install pcre openssl@1.1 sqlite3 wget curl
               OPENSSL_PREFIX=$(brew --prefix openssl@1.1)
               echo "PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib" >> $GITHUB_ENV
-              echo "OPENSSL_ROOT_DIR=$OPENSSL_PREFIX" >> $GITHUB_ENV
-              echo "OPENSSL_LIB_DIR=$OPENSSL_PREFIX/lib" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include" >> $GITHUB_ENV
-              echo "DYLD_LIBRARY_PATH=$OPENSSL_PREFIX/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
-              echo "PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
     
     runs-on: ${{ matrix.os }}
     
@@ -44,24 +33,6 @@ jobs:
     - name: Install dependencies
       run: ${{ matrix.install }}
     
-    - name: Verify OpenSSL
-      run: |
-        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          openssl version
-          ls -l /usr/lib/x86_64-linux-gnu/libssl*
-          ls -l /usr/include/openssl
-          pkg-config --modversion openssl || true
-          pkg-config --cflags openssl || true
-          pkg-config --libs openssl || true
-        else
-          openssl version
-          ls -l $(brew --prefix openssl@1.1)/lib/libssl*
-          ls -l $(brew --prefix openssl@1.1)/include/openssl
-          pkg-config --modversion openssl || true
-          pkg-config --cflags openssl || true
-          pkg-config --libs openssl || true
-        fi
-    
     - name: Prepare build environment
       run: |
         rm -rf build
@@ -71,6 +42,8 @@ jobs:
         tar xzf nginx-1.24.0.tar.gz
         wget -q https://sourceforge.net/projects/pcre/files/pcre/8.45/pcre-8.45.tar.gz/download -O pcre-8.45.tar.gz
         tar xzf pcre-8.45.tar.gz
+        wget -q https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+        tar xzf openssl-1.1.1w.tar.gz
         rm -f *.tar.gz
         cd pcre-8.45
         ./configure --enable-static --disable-shared
@@ -82,22 +55,11 @@ jobs:
     - name: Build module
       run: |
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          make OPENSSL_ROOT_DIR=/usr \
-               OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu \
-               OPENSSL_INCLUDE_DIR=/usr/include \
-               PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
-               LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
-               PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+          make PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
                SKIP_DEPS=1 \
                all
         else
-          OPENSSL_PREFIX=$(brew --prefix openssl@1.1)
-          make OPENSSL_ROOT_DIR=$OPENSSL_PREFIX \
-               OPENSSL_LIB_DIR=$OPENSSL_PREFIX/lib \
-               OPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include \
-               PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib \
-               DYLD_LIBRARY_PATH=$OPENSSL_PREFIX/lib \
-               PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig \
+          make PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib \
                SKIP_DEPS=1 \
                all
         fi
@@ -132,21 +94,6 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl nginx-dev
         sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
-        # Ensure OpenSSL paths are correct
-        echo "OPENSSL_ROOT_DIR=/usr" >> $GITHUB_ENV
-        echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-        echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-    
-    - name: Verify OpenSSL
-      run: |
-        openssl version
-        ls -l /usr/lib/x86_64-linux-gnu/libssl*
-        ls -l /usr/include/openssl
-        pkg-config --modversion openssl || true
-        pkg-config --cflags openssl || true
-        pkg-config --libs openssl || true
     
     - name: Prepare build environment
       run: |
@@ -157,6 +104,8 @@ jobs:
         tar xzf nginx-1.24.0.tar.gz
         wget -q https://sourceforge.net/projects/pcre/files/pcre/8.45/pcre-8.45.tar.gz/download -O pcre-8.45.tar.gz
         tar xzf pcre-8.45.tar.gz
+        wget -q https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+        tar xzf openssl-1.1.1w.tar.gz
         rm -f *.tar.gz
         cd pcre-8.45
         ./configure --enable-static --disable-shared
@@ -167,12 +116,7 @@ jobs:
     
     - name: Build standalone module
       run: |
-        make OPENSSL_ROOT_DIR=/usr \
-             OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu \
-             OPENSSL_INCLUDE_DIR=/usr/include \
-             PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
-             LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
-             PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+        make PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
              SKIP_DEPS=1 \
              STANDALONE=1
     
