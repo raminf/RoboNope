@@ -76,6 +76,8 @@ jobs:
         ./configure --enable-static --disable-shared
         make
         cd ..
+        # Create a flag file to indicate dependencies are ready
+        touch .deps-ready
     
     - name: Build module
       run: |
@@ -86,6 +88,7 @@ jobs:
                PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
                LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
                PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+               SKIP_DEPS=1 \
                all
         else
           OPENSSL_PREFIX=$(brew --prefix openssl@1.1)
@@ -95,6 +98,7 @@ jobs:
                PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib \
                DYLD_LIBRARY_PATH=$OPENSSL_PREFIX/lib \
                PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig \
+               SKIP_DEPS=1 \
                all
         fi
     
@@ -158,6 +162,8 @@ jobs:
         ./configure --enable-static --disable-shared
         make
         cd ..
+        # Create a flag file to indicate dependencies are ready
+        touch .deps-ready
     
     - name: Build standalone module
       run: |
@@ -167,6 +173,7 @@ jobs:
              PCRE_LIB_PATH=/usr/lib/x86_64-linux-gnu/libpcre.so \
              LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
              PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+             SKIP_DEPS=1 \
              STANDALONE=1
     
     - name: Create standalone package

@@ -271,6 +271,9 @@ NGINX_MODULE_DIR = $(shell nginx -V 2>&1 | grep "configure arguments:" | sed 's/
 # Add source file tracking for proper rebuilds
 SRC_FILES := $(wildcard src/*.c src/*.h)
 
+# Add SKIP_DEPS option
+SKIP_DEPS ?= 0
+
 # Modify build target to track dependencies
 .PHONY: build-target
 build-target: $(MODULE_OUTPUT) $(DEMO_NGINX)
@@ -590,123 +593,100 @@ check-openssl:
 prepare-build:
 	mkdir -p $(BUILD_DIR)
 
-# Download and extract sources
-download: prepare-build
-	@echo "Downloading nginx source..."
-	cd $(BUILD_DIR) && wget -q $(NGINX_URL) -O $(NGINX_TAR)
-	cd $(BUILD_DIR) && tar xzf $(NGINX_TAR)
-	@echo "Downloading PCRE source..."
-	cd $(BUILD_DIR) && wget -q $(PCRE_URL) -O $(PCRE_TAR)
-	cd $(BUILD_DIR) && tar xzf $(PCRE_TAR)
-	@if [ "$(HAS_SYSTEM_OPENSSL)" != "yes" ]; then \
-		echo "Downloading OpenSSL source..."; \
-		cd $(BUILD_DIR) && wget -q $(OPENSSL_URL) -O $(OPENSSL_TAR); \
-		cd $(BUILD_DIR) && tar xzf $(OPENSSL_TAR); \
-	fi
-	@echo "Cleaning up downloaded archives..."
-	cd $(BUILD_DIR) && rm -f $(NGINX_TAR) $(PCRE_TAR) $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),$(OPENSSL_TAR))
-
-# Build PCRE
-build-pcre: download
-	@if [ ! -d "$(PCRE_SRC)" ]; then \
-		echo "PCRE source directory not found. Please run 'make download' first."; \
-		exit 1; \
-	fi
-	@echo "Building PCRE for tests..."
-	cd $(PCRE_SRC) && \
-	if [ "$(OS)" = "Darwin" ]; then \
-		CFLAGS="-O2 -pipe -fvisibility=hidden" \
-		CXXFLAGS="-O2 -fvisibility=hidden -fvisibility-inlines-hidden" \
-		LDFLAGS="-Wl,-undefined,dynamic_lookup -Wl,-no_fixup_chains" \
-		./configure --disable-shared --enable-static \
-			--enable-utf8 \
-			--enable-unicode-properties \
-			--enable-pcre16 \
-			--enable-pcre32 \
-			--enable-jit \
-			--enable-cpp \
-			--with-match-limit=10000000 \
-			--with-match-limit-recursion=10000000 \
-			--enable-rebuild-chartables \
-			--enable-newline-is-lf; \
-	else \
-		CFLAGS="-O2 -pipe -fvisibility=hidden" \
-		CXXFLAGS="-O2 -fvisibility=hidden -fvisibility-inlines-hidden" \
-		./configure --disable-shared --enable-static \
-			--enable-utf8 \
-			--enable-unicode-properties \
-			--enable-pcre16 \
-			--enable-pcre32 \
-			--enable-jit \
-			--enable-cpp \
-			--with-match-limit=10000000 \
-			--with-match-limit-recursion=10000000 \
-			--enable-rebuild-chartables \
-			--enable-newline-is-lf; \
-	fi && \
-	make && \
-	cp .libs/libpcre.a . && \
-	cp .libs/libpcre16.a . && \
-	cp .libs/libpcre32.a . && \
-	cp config.h pcre.h
-
-# Build OpenSSL (only if needed)
-build-openssl: download
-	@if [ "$(HAS_SYSTEM_OPENSSL)" = "yes" ]; then \
-		echo "Using system OpenSSL version $(OPENSSL_SYSTEM_VERSION) from $(OPENSSL_SYSTEM_ROOT)"; \
-	else \
-		if [ ! -d "$(OPENSSL_SRC)" ]; then \
-			echo "OpenSSL source directory not found. Please run 'make download' first."; \
-			exit 1; \
+# Update download target
+.PHONY: download
+download:
+	@if [ "$(SKIP_DEPS)" = "0" ] || [ ! -f "build/.deps-ready" ]; then \
+		mkdir -p build; \
+		echo "Downloading nginx source..."; \
+		cd build && wget -q $(NGINX_URL) -O $(NGINX_TAR); \
+		cd build && tar xzf $(NGINX_TAR); \
+		echo "Downloading PCRE source..."; \
+		cd build && wget -q $(PCRE_URL) -O $(PCRE_TAR); \
+		cd build && tar xzf $(PCRE_TAR); \
+		if [ "$(HAS_SYSTEM_OPENSSL)" != "yes" ]; then \
+			echo "Downloading OpenSSL source..."; \
+			cd build && wget -q $(OPENSSL_URL) -O $(OPENSSL_TAR); \
+			cd build && tar xzf $(OPENSSL_TAR); \
 		fi; \
-		echo "Building OpenSSL from source..."; \
-		cd $(OPENSSL_SRC) && \
-		if [ "$(OS)" = "Darwin" ]; then \
-			if [ "$(ARCH)" = "arm64" ]; then \
-				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure darwin64-arm64-cc $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
-			else \
-				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure darwin64-x86_64-cc $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
-			fi; \
-		elif [ "$(OS)" = "Linux" ]; then \
-			if [ "$(ARCH)" = "x86_64" ]; then \
-				CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
-			elif [ "$(ARCH)" = "aarch64" ] || [ "$(ARCH)" = "arm64" ]; then \
-				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure linux-aarch64 $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
-			else \
-				CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
-			fi; \
-		else \
-			CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) -Wno-error=missing-field-initializers; \
-		fi && \
-		make clean && \
-		make CFLAGS="$(OPENSSL_CFLAGS) -Wno-error=missing-field-initializers" && \
-		$(MAKE) install_sw; \
+		echo "Cleaning up downloaded archives..."; \
+		cd build && rm -f $(NGINX_TAR) $(PCRE_TAR) $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),$(OPENSSL_TAR)); \
+		touch build/.deps-ready; \
+	else \
+		echo "Using existing dependencies in build directory"; \
 	fi
 
-# Configure NGINX
-configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openssl)
-	@if [ ! -d "$(NGINX_SRC)" ]; then \
-		echo "NGINX source directory not found. Please run 'make download' first."; \
-		exit 1; \
-	fi
-	@echo "Configuring nginx with RoboNope module..."
-	cd $(NGINX_SRC) && \
-	if [ "$(DB_ENGINE)" = "duckdb" ]; then \
-		ROBONOPE_USE_DUCKDB=1 ./configure --add-dynamic-module=../../src \
-			--with-compat \
-			--with-threads \
-			--with-http_ssl_module \
-			--with-pcre=../../$(PCRE_SRC) \
-			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include" \
-			--with-ld-opt="-L../../$(PCRE_SRC) -L/opt/homebrew/opt/openssl@3/lib"; \
+# Update build-pcre target
+.PHONY: build-pcre
+build-pcre:
+	@if [ "$(SKIP_DEPS)" = "0" ] || [ ! -f "build/pcre-$(PCRE_VERSION)/.libs/libpcre.a" ]; then \
+		$(MAKE) download; \
+		echo "Building PCRE for tests..."; \
+		cd $(PCRE_SRC) && \
+		if [ "$(OS)" = "Darwin" ]; then \
+			CFLAGS="-O2 -pipe -fvisibility=hidden" \
+			CXXFLAGS="-O2 -fvisibility=hidden -fvisibility-inlines-hidden" \
+			LDFLAGS="-Wl,-undefined,dynamic_lookup -Wl,-no_fixup_chains" \
+			./configure --disable-shared --enable-static \
+				--enable-utf8 \
+				--enable-unicode-properties \
+				--enable-pcre16 \
+				--enable-pcre32 \
+				--enable-jit \
+				--enable-cpp \
+				--with-match-limit=10000000 \
+				--with-match-limit-recursion=10000000 \
+				--enable-rebuild-chartables \
+				--enable-newline-is-lf; \
+		else \
+			CFLAGS="-O2 -pipe -fvisibility=hidden" \
+			CXXFLAGS="-O2 -fvisibility=hidden -fvisibility-inlines-hidden" \
+			./configure --disable-shared --enable-static \
+				--enable-utf8 \
+				--enable-unicode-properties \
+				--enable-pcre16 \
+				--enable-pcre32 \
+				--enable-jit \
+				--enable-cpp \
+				--with-match-limit=10000000 \
+				--with-match-limit-recursion=10000000 \
+				--enable-rebuild-chartables \
+				--enable-newline-is-lf; \
+		fi && \
+		make && \
+		cp .libs/libpcre.a . && \
+		cp .libs/libpcre16.a . && \
+		cp .libs/libpcre32.a . && \
+		cp config.h pcre.h; \
 	else \
-		./configure --add-dynamic-module=../../src \
-			--with-compat \
-			--with-threads \
-			--with-http_ssl_module \
-			--with-pcre=../../$(PCRE_SRC) \
-			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include" \
-			--with-ld-opt="-L../../$(PCRE_SRC) -L/opt/homebrew/opt/openssl@3/lib"; \
+		echo "Using existing PCRE build"; \
+	fi
+
+# Update configure-nginx target
+.PHONY: configure-nginx
+configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openssl)
+	@if [ ! -f "$(NGINX_SRC)/Makefile" ]; then \
+		echo "Configuring nginx with RoboNope module..."; \
+		cd $(NGINX_SRC) && \
+		if [ "$(DB_ENGINE)" = "duckdb" ]; then \
+			ROBONOPE_USE_DUCKDB=1 ./configure --add-dynamic-module=../../src \
+				--with-compat \
+				--with-threads \
+				--with-http_ssl_module \
+				--with-pcre=../../$(PCRE_SRC) \
+				--with-cc-opt="-I../../$(PCRE_SRC) $(if $(OPENSSL_INCLUDE_DIR),-I$(OPENSSL_INCLUDE_DIR))" \
+				--with-ld-opt="-L../../$(PCRE_SRC) $(if $(OPENSSL_LIB_DIR),-L$(OPENSSL_LIB_DIR))"; \
+		else \
+			./configure --add-dynamic-module=../../src \
+				--with-compat \
+				--with-threads \
+				--with-http_ssl_module \
+				--with-pcre=../../$(PCRE_SRC) \
+				--with-cc-opt="-I../../$(PCRE_SRC) $(if $(OPENSSL_INCLUDE_DIR),-I$(OPENSSL_INCLUDE_DIR))" \
+				--with-ld-opt="-L../../$(PCRE_SRC) $(if $(OPENSSL_LIB_DIR),-L$(OPENSSL_LIB_DIR))"; \
+		fi; \
+	else \
+		echo "Using existing nginx configuration"; \
 	fi
 
 # Generate NGINX headers
