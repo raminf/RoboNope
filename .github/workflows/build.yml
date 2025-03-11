@@ -21,8 +21,11 @@ jobs:
             install: |
               brew install pcre openssl@1.1 sqlite3 wget curl
               brew install nginx
-              # Force link nginx to ensure headers are available
-              brew link nginx
+              # Force unlink and relink nginx to ensure headers are available
+              brew unlink nginx || true
+              brew link --force nginx
+              # Export nginx include path
+              echo "NGINX_INC_PATH=$(brew --prefix nginx)/include/nginx" >> $GITHUB_ENV
               echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
               echo "PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib" >> $GITHUB_ENV
     
@@ -45,6 +48,7 @@ jobs:
         else
           make PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib \
                OPENSSL_ROOT_DIR=$(brew --prefix openssl@1.1) \
+               NGINX_INC_PATH=$(brew --prefix nginx)/include/nginx \
                STANDALONE=1 \
                all
         fi
