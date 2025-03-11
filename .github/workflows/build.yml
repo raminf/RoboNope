@@ -17,6 +17,12 @@ jobs:
               sudo apt-get update
               sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl
               sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
+              # Ensure OpenSSL paths are correct
+              echo "OPENSSL_ROOT_DIR=/usr" >> $GITHUB_ENV
+              echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+              echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+              echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+              echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           - os: macos-latest
             install: |
               brew install pcre openssl@1.1 sqlite3 wget curl
@@ -29,12 +35,6 @@ jobs:
               echo "PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
     
     runs-on: ${{ matrix.os }}
-    env:
-      OPENSSL_ROOT_DIR: ${{ matrix.os == 'ubuntu-latest' && '/usr' || '' }}
-      OPENSSL_LIB_DIR: ${{ matrix.os == 'ubuntu-latest' && '/usr/lib/x86_64-linux-gnu' || '' }}
-      OPENSSL_INCLUDE_DIR: ${{ matrix.os == 'ubuntu-latest' && '/usr/include' || '' }}
-      PKG_CONFIG_PATH: ${{ matrix.os == 'ubuntu-latest' && '/usr/lib/x86_64-linux-gnu/pkgconfig' || '' }}
-      LD_LIBRARY_PATH: ${{ matrix.os == 'ubuntu-latest' && '/usr/lib/x86_64-linux-gnu' || '' }}
     
     steps:
     - uses: actions/checkout@v4
@@ -121,12 +121,6 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    env:
-      OPENSSL_ROOT_DIR: /usr
-      OPENSSL_LIB_DIR: /usr/lib/x86_64-linux-gnu
-      OPENSSL_INCLUDE_DIR: /usr/include
-      PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
-      LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
     
     steps:
     - uses: actions/checkout@v4
@@ -138,6 +132,12 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl nginx-dev
         sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
+        # Ensure OpenSSL paths are correct
+        echo "OPENSSL_ROOT_DIR=/usr" >> $GITHUB_ENV
+        echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
     
     - name: Verify OpenSSL
       run: |

@@ -662,7 +662,39 @@ build-pcre:
 		echo "Using existing PCRE build"; \
 	fi
 
-# Update configure-nginx target
+# Build OpenSSL (only if needed)
+.PHONY: build-openssl
+build-openssl:
+	@if [ "$(SKIP_DEPS)" = "0" ] || [ ! -f "build/openssl-$(OPENSSL_VERSION)/.openssl/lib/libssl.a" ]; then \
+		$(MAKE) download; \
+		echo "Building OpenSSL from source..."; \
+		cd $(OPENSSL_SRC) && \
+		if [ "$(OS)" = "Darwin" ]; then \
+			if [ "$(ARCH)" = "arm64" ]; then \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure darwin64-arm64-cc $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+			else \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure darwin64-x86_64-cc $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+			fi; \
+		elif [ "$(OS)" = "Linux" ]; then \
+			if [ "$(ARCH)" = "x86_64" ]; then \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+			elif [ "$(ARCH)" = "aarch64" ] || [ "$(ARCH)" = "arm64" ]; then \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./Configure linux-aarch64 $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+			else \
+				CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+			fi; \
+		else \
+			CFLAGS="$(OPENSSL_CFLAGS)" ./config $(OPENSSL_CONFIG_FLAGS) --prefix=$(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl -Wno-error=missing-field-initializers; \
+		fi && \
+		make clean && \
+		make && \
+		make install_sw; \
+		echo "OpenSSL built successfully at $(CURDIR)/build/openssl-$(OPENSSL_VERSION)/.openssl"; \
+	else \
+		echo "Using existing OpenSSL build"; \
+	fi
+
+# Update configure-nginx target to use built OpenSSL
 .PHONY: configure-nginx
 configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openssl)
 	@if [ ! -f "$(NGINX_SRC)/Makefile" ]; then \
@@ -674,6 +706,7 @@ configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openss
 				--with-threads \
 				--with-http_ssl_module \
 				--with-pcre=../../$(PCRE_SRC) \
+				$(if $(filter no,$(HAS_SYSTEM_OPENSSL)),--with-openssl=../../$(OPENSSL_SRC)) \
 				--with-cc-opt="-I../../$(PCRE_SRC) $(if $(OPENSSL_INCLUDE_DIR),-I$(OPENSSL_INCLUDE_DIR))" \
 				--with-ld-opt="-L../../$(PCRE_SRC) $(if $(OPENSSL_LIB_DIR),-L$(OPENSSL_LIB_DIR))"; \
 		else \
@@ -682,6 +715,7 @@ configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openss
 				--with-threads \
 				--with-http_ssl_module \
 				--with-pcre=../../$(PCRE_SRC) \
+				$(if $(filter no,$(HAS_SYSTEM_OPENSSL)),--with-openssl=../../$(OPENSSL_SRC)) \
 				--with-cc-opt="-I../../$(PCRE_SRC) $(if $(OPENSSL_INCLUDE_DIR),-I$(OPENSSL_INCLUDE_DIR))" \
 				--with-ld-opt="-L../../$(PCRE_SRC) $(if $(OPENSSL_LIB_DIR),-L$(OPENSSL_LIB_DIR))"; \
 		fi; \
