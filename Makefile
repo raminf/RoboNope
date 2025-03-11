@@ -407,6 +407,7 @@ clean-demo:
 standalone-clean: clean
 	rm -rf standalone
 
+.PHONY: clean-build
 clean-build:
 	@echo "Cleaning build directory..."
 	rm -rf $(BUILD_DIR)
@@ -426,7 +427,8 @@ clean-build:
 	@chmod +x $(DEMO_NGINX)
 	@echo "Build completed successfully:"
 	@echo "  Module: $(MODULE_OUTPUT)"
-	@echo "  Nginx:  $(DEMO_NGINX)"
+	@echo "  Nginx:  $(DEMO_NGINX)" 
+
 
 # Add standalone targets
 .PHONY: standalone-build standalone-install
@@ -791,25 +793,30 @@ demo-stop:
 demo: demo-start demo-test
 	@echo "Demo completed. Run 'make demo-stop' to shutdown the server."
 
-# Add clean-build target for explicit rebuilds
-.PHONY: clean-build
-clean-build:
-	@echo "Cleaning build directory..."
-	rm -rf $(BUILD_DIR)
-	@echo "Starting fresh build..."
-	$(MAKE) download
-	$(MAKE) build-pcre
-	$(MAKE) configure-nginx
-	cd $(NGINX_SRC) && $(MAKE)
-	@if [ ! -f "$(DEMO_NGINX)" ]; then \
-		echo "ERROR: Failed to build nginx binary. Check build logs for errors."; \
-		exit 1; \
+# Add dependency checking targets
+.PHONY: check-deps
+check-deps:
+	@echo "Checking build dependencies..."
+	@command -v $(CC) >/dev/null 2>&1 || { echo "Error: $(CC) not found. Please install a C compiler."; exit 1; }
+	@command -v $(MAKE) >/dev/null 2>&1 || { echo "Error: make not found."; exit 1; }
+	@command -v $(PKG_CONFIG) >/dev/null 2>&1 || { echo "Warning: pkg-config not found. Will use default paths."; }
+	@if [ "$(HAS_SYSTEM_OPENSSL)" != "yes" ]; then \
+		echo "Warning: OpenSSL >= $(OPENSSL_MIN_VERSION) not found. Will download and build from source."; \
+	else \
+		echo "Found OpenSSL $(OPENSSL_SYSTEM_VERSION) at $(OPENSSL_SYSTEM_ROOT)"; \
 	fi
-	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
-		echo "ERROR: Failed to build module. Check build logs for errors."; \
+	@if [ -z "$(PCRE_LIB_PATH)" ]; then \
+		echo "Error: PCRE library not found."; \
+		echo "Please install PCRE development files:"; \
+		echo "  Debian/Ubuntu: apt-get install libpcre3-dev"; \
+		echo "  RHEL/CentOS:  yum install pcre-devel"; \
+		echo "  macOS:        brew install pcre"; \
+		echo "  Windows:      pacman -S mingw-w64-x86_64-pcre"; \
 		exit 1; \
+	else \
+		echo "Found PCRE at $(PCRE_LIB_PATH)"; \
 	fi
-	@chmod +x $(DEMO_NGINX)
-	@echo "Build completed successfully:"
-	@echo "  Module: $(MODULE_OUTPUT)"
-	@echo "  Nginx:  $(DEMO_NGINX)" 
+	@if [ "$(DB_ENGINE)" = "duckdb" ]; then \
+		echo "Warning: DuckDB support is still under development."; \
+	fi
+	@echo "All required dependencies found."

@@ -8,35 +8,75 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        db: [sqlite, duckdb]
+        include:
+          - os: ubuntu-latest
+            install: sudo apt-get update && sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl
+          - os: macos-latest
+            install: brew install pcre openssl sqlite3 wget curl
+        exclude:
+          # DuckDB support is still under development
+          - os: macos-latest
+            db: duckdb
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    
+    - name: Install dependencies
+      run: ${{ matrix.install }}
+    
+    - name: Check dependencies
+      run: make check-deps
+    
+    - name: Build module
+      run: make DB_ENGINE=${{ matrix.db }} all
+    
+    - name: Run tests
+      run: make test
+    
+    - name: Create release package
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && matrix.os == 'ubuntu-latest' && matrix.db == 'sqlite'
+      run: make release
+    
+    - name: Upload release artifact
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && matrix.os == 'ubuntu-latest' && matrix.db == 'sqlite'
+      uses: actions/upload-artifact@v4
+      with:
+        name: robonope-module
+        path: robonope-module-*.tar.gz
+        retention-days: 7
+
+  standalone:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: 'recursive'
     
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget
+        sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl nginx-dev
     
-    - name: Check dependencies
-      run: make check-deps
+    - name: Build standalone module
+      run: make STANDALONE=1
     
-    - name: Build module
-      run: make all
+    - name: Create standalone package
+      run: make STANDALONE=1 install
     
-    - name: Run tests
-      run: make test
-    
-    - name: Create release package
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: make release
-    
-    - name: Upload release artifact
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    - name: Upload standalone artifact
       uses: actions/upload-artifact@v4
       with:
-        name: robonope-module
-        path: robonope-module-*.tar.gz
+        name: robonope-standalone
+        path: standalone/
         retention-days: 7 
