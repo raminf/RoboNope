@@ -14,9 +14,15 @@ jobs:
         db: [sqlite, duckdb]
         include:
           - os: ubuntu-latest
-            install: sudo apt-get update && sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl
+            install: |
+              sudo apt-get update
+              sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl
+              sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
           - os: macos-latest
-            install: brew install pcre openssl sqlite3 wget curl
+            install: |
+              brew install pcre openssl sqlite3 wget curl
+              echo "PCRE_LIB_PATH=$(brew --prefix pcre)/lib/libpcre.dylib" >> $GITHUB_ENV
+              echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl)" >> $GITHUB_ENV
         exclude:
           # DuckDB support is still under development
           - os: macos-latest
@@ -67,6 +73,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential libsqlite3-dev libpcre3-dev zlib1g-dev libssl-dev perl wget curl nginx-dev
+        sudo ln -s /usr/lib/x86_64-linux-gnu/libpcre.so /usr/lib/libpcre.so || true
     
     - name: Build standalone module
       run: make STANDALONE=1

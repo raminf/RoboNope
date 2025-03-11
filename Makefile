@@ -806,13 +806,21 @@ check-deps:
 		echo "Found OpenSSL $(OPENSSL_SYSTEM_VERSION) at $(OPENSSL_SYSTEM_ROOT)"; \
 	fi
 	@if [ -z "$(PCRE_LIB_PATH)" ]; then \
-		echo "Error: PCRE library not found."; \
-		echo "Please install PCRE development files:"; \
-		echo "  Debian/Ubuntu: apt-get install libpcre3-dev"; \
-		echo "  RHEL/CentOS:  yum install pcre-devel"; \
-		echo "  macOS:        brew install pcre"; \
-		echo "  Windows:      pacman -S mingw-w64-x86_64-pcre"; \
-		exit 1; \
+		if [ -f "/usr/include/pcre.h" ] && ([ -f "/usr/lib/libpcre.so" ] || [ -f "/usr/lib/x86_64-linux-gnu/libpcre.so" ]); then \
+			echo "Found PCRE in system paths"; \
+		elif [ -f "/usr/local/include/pcre.h" ] && [ -f "/usr/local/lib/libpcre.so" ]; then \
+			echo "Found PCRE in /usr/local"; \
+		elif [ -f "/opt/homebrew/include/pcre.h" ] && [ -f "/opt/homebrew/lib/libpcre.dylib" ]; then \
+			echo "Found PCRE in Homebrew"; \
+		else \
+			echo "Error: PCRE library not found."; \
+			echo "Please install PCRE development files:"; \
+			echo "  Debian/Ubuntu: apt-get install libpcre3-dev"; \
+			echo "  RHEL/CentOS:  yum install pcre-devel"; \
+			echo "  macOS:        brew install pcre"; \
+			echo "  Windows:      pacman -S mingw-w64-x86_64-pcre"; \
+			exit 1; \
+		fi \
 	else \
 		echo "Found PCRE at $(PCRE_LIB_PATH)"; \
 	fi
@@ -820,3 +828,7 @@ check-deps:
 		echo "Warning: DuckDB support is still under development."; \
 	fi
 	@echo "All required dependencies found."
+
+# Default target
+.PHONY: all
+all: check-deps build
