@@ -1,6 +1,20 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+
+/* Optional modules configuration */
+#ifndef NGX_HTTP_SSL
+#define NGX_HTTP_SSL 0
+#endif
+
+#ifndef NGX_HTTP_SSI
+#define NGX_HTTP_SSI 0
+#endif
+
+#if (NGX_HTTP_SSL)
+#include <ngx_http_ssl_module.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,11 +27,6 @@
 #endif
 
 #include "ngx_http_robonope_module.h"
-
-/* Module configuration */
-#ifndef NGX_HTTP_SSI
-#define NGX_HTTP_SSI 0
-#endif
 
 // Function declarations for internal use only
 static void *ngx_http_robonope_create_loc_conf(ngx_conf_t *cf);
