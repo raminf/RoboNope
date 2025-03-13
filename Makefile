@@ -695,7 +695,7 @@ configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openss
 			--with-threads \
 			--with-http_ssl_module \
 			--with-pcre=../../$(PCRE_SRC) \
-			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include" \
+			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include -DNGINX_BUILD" \
 			--with-ld-opt="-L../../$(PCRE_SRC) -L/opt/homebrew/opt/openssl@3/lib"; \
 	else \
 		./configure --add-dynamic-module=../../src \
@@ -703,7 +703,7 @@ configure-nginx: build-pcre $(if $(filter no,$(HAS_SYSTEM_OPENSSL)),build-openss
 			--with-threads \
 			--with-http_ssl_module \
 			--with-pcre=../../$(PCRE_SRC) \
-			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include" \
+			--with-cc-opt="-I../../$(PCRE_SRC) -I/opt/homebrew/opt/openssl@3/include -DNGINX_BUILD" \
 			--with-ld-opt="-L../../$(PCRE_SRC) -L/opt/homebrew/opt/openssl@3/lib"; \
 	fi
 

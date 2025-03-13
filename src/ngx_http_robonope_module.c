@@ -760,19 +760,22 @@ ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url)
     return link;
 }
 
-static ngx_int_t ngx_http_robonope_init_cache(ngx_http_robonope_main_conf_t *mcf)
+ngx_int_t 
+ngx_http_robonope_init_cache(ngx_http_robonope_main_conf_t *mcf)
 {
     // Implementation of ngx_http_robonope_init_cache function
     return NGX_OK; // Placeholder return, actual implementation needed
 }
 
-static ngx_int_t ngx_http_robonope_cache_lookup(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint)
+ngx_int_t 
+ngx_http_robonope_cache_lookup(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint)
 {
     // Implementation of ngx_http_robonope_cache_lookup function
     return NGX_OK; // Placeholder return, actual implementation needed
 }
 
-static void ngx_http_robonope_cache_insert(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint)
+void 
+ngx_http_robonope_cache_insert(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint)
 {
     // Implementation of ngx_http_robonope_cache_insert function
 }
