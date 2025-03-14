@@ -7,6 +7,8 @@
 [![Language](https://img.shields.io/badge/language-C-orange.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
 [![GitHub last commit](https://img.shields.io/github/last-commit/raminf/RoboNope)](https://github.com/raminf/RoboNope/commits/main)
 
+![RoboNope](img/RoboNope.png)
+
 `RoboNope` is an Nginx module designed to deny access to files specified in the robots.txt `Disallow` entries. It serves randomly generated content to bots that ignore `robots.txt` rules. Ignore at your peril.
 
 According to [W3Techs](https://w3techs.com/technologies/overview/web_server) the top 5 most popular webservers as of March 2025 are:
