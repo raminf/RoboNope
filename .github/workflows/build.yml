@@ -1,4 +1,9 @@
-name: Build and Test
+# Disabling auto-build workflow on GitHub.
+# Runners are system specific and not available for all systems.
+# Best to build on target system from source.
+# Will revisit in future, if there's demand for it.
+#
+name: RoboNope Build and Test
 
 on:
   push:
