@@ -392,3 +392,9 @@ The build system tracks source file dependencies to avoid unnecessary rebuilds:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+
+## Disclosure
+
+Most of the project, the README, and the artwork was assisted by AI. Even the name was workshopped with an AI. 
+
+![Magritte Pipe](img/MagrittePipe.jpg)
