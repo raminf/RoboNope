@@ -271,23 +271,25 @@ NGINX_MODULE_DIR = $(shell nginx -V 2>&1 | grep "configure arguments:" | sed 's/
 # Add source file tracking for proper rebuilds
 SRC_FILES := $(wildcard src/*.c src/*.h)
 
+# Consolidate all .PHONY declarations at the top
+.PHONY: all build build-target check-module-binary release clean clean-demo standalone-clean clean-build \
+        standalone-build standalone-install install help check-openssl prepare-build download \
+        build-pcre build-openssl configure-nginx generate-headers build-unity \
+        demo demo-start demo-test demo-logs demo-stop
+
+#################################################
+# BUILD TARGETS
+#################################################
+
 # Modify build target to track dependencies
 .PHONY: build-target
 build-target: $(MODULE_OUTPUT) $(DEMO_NGINX)
 
 $(MODULE_OUTPUT) $(DEMO_NGINX): $(SRC_FILES)
 	@mkdir -p build
-	@echo "Found system OpenSSL version $(OPENSSL_VERSION) at $(OPENSSL_PREFIX)"
-	@echo "Include path: $(OPENSSL_INCLUDE)"
-	@echo "Library path: $(OPENSSL_LIB)"
-	@echo "Downloading nginx source..."
-	cd build && wget -q $(NGINX_URL) -O nginx-1.24.0.tar.gz
-	cd build && tar xzf nginx-1.24.0.tar.gz
-	@echo "Downloading PCRE source..."
-	cd build && wget -q $(PCRE_URL) -O pcre-8.45.tar.gz
-	cd build && tar xzf pcre-8.45.tar.gz
-	@echo "Cleaning up downloaded archives..."
-	cd build && rm -f nginx-1.24.0.tar.gz pcre-8.45.tar.gz
+	@echo "Building RoboNope module..."
+	# Use the download target instead of duplicating code
+	$(MAKE) download
 	$(MAKE) build-pcre
 	$(MAKE) configure-nginx
 	@echo "Building nginx and modules..."
@@ -315,20 +317,16 @@ $(MODULE_OUTPUT) $(DEMO_NGINX): $(SRC_FILES)
 # Update build to use the new target
 build: build-target
 
-# Update check-module-binary to use build-target
+# Update check-module-binary to be more efficient
 .PHONY: check-module-binary
 check-module-binary:
 	@if [ ! -f "$(MODULE_OUTPUT)" ] || [ ! -f "$(DEMO_NGINX)" ] || [ ! -x "$(DEMO_NGINX)" ]; then \
-		echo "Module binary or nginx binary not found or not executable. Running clean build..."; \
-		$(MAKE) clean-build; \
+		echo "Module binary or nginx binary not found or not executable. Running build..."; \
+		$(MAKE) build; \
 	else \
 		echo "Using existing binaries:"; \
 		echo "  Module: $(MODULE_OUTPUT)"; \
 		echo "  Nginx:  $(DEMO_NGINX)"; \
-		if [ ! -x "$(DEMO_NGINX)" ]; then \
-			echo "Warning: nginx binary exists but is not executable. Running clean build..."; \
-			$(MAKE) clean-build; \
-		fi \
 	fi
 
 # Create a standalone distribution package
@@ -379,8 +377,9 @@ release: build
 	@echo "Standalone distribution package created: robonope-module-$(shell date +%Y%m%d).tar.gz"
 	@echo "To install on a target system, extract the package and run ./install.sh"
 
-# Clean targets
-.PHONY: clean clean-demo standalone-clean clean-build
+#################################################
+# CLEAN TARGETS
+#################################################
 
 clean:
 	@echo "Cleaning build artifacts..."
@@ -407,6 +406,7 @@ clean-demo:
 standalone-clean: clean
 	rm -rf standalone
 
+# Add clean-build target for explicit rebuilds
 clean-build:
 	@echo "Cleaning build directory..."
 	rm -rf $(BUILD_DIR)
@@ -428,8 +428,9 @@ clean-build:
 	@echo "  Module: $(MODULE_OUTPUT)"
 	@echo "  Nginx:  $(DEMO_NGINX)"
 
-# Add standalone targets
-.PHONY: standalone-build standalone-install
+#################################################
+# STANDALONE MODULE TARGETS
+#################################################
 
 standalone-build: src/*
 	@if [ "$(STANDALONE)" = "1" ]; then \
@@ -721,7 +722,10 @@ build-unity:
 	cd $(UNITY_SRC) && cc -c src/unity.c -o build/unity.o
 	cd $(UNITY_SRC) && ar rcs build/libunity.a build/unity.o
 
-# Demo targets to test the module
+#################################################
+# DEMO TARGETS
+#################################################
+
 demo-start: build
 	@echo "Using existing binaries:"
 	@echo "  Module: build/nginx-1.24.0/objs/ngx_http_robonope_module.so"
@@ -791,25 +795,8 @@ demo-stop:
 demo: demo-start demo-test
 	@echo "Demo completed. Run 'make demo-stop' to shutdown the server."
 
-# Add clean-build target for explicit rebuilds
-.PHONY: clean-build
-clean-build:
-	@echo "Cleaning build directory..."
-	rm -rf $(BUILD_DIR)
-	@echo "Starting fresh build..."
-	$(MAKE) download
-	$(MAKE) build-pcre
-	$(MAKE) configure-nginx
-	cd $(NGINX_SRC) && $(MAKE)
-	@if [ ! -f "$(DEMO_NGINX)" ]; then \
-		echo "ERROR: Failed to build nginx binary. Check build logs for errors."; \
-		exit 1; \
-	fi
-	@if [ ! -f "$(MODULE_OUTPUT)" ]; then \
-		echo "ERROR: Failed to build module. Check build logs for errors."; \
-		exit 1; \
-	fi
-	@chmod +x $(DEMO_NGINX)
-	@echo "Build completed successfully:"
-	@echo "  Module: $(MODULE_OUTPUT)"
-	@echo "  Nginx:  $(DEMO_NGINX)" 
+#################################################
+# DEPENDENCY CHECKS
+#################################################
+
+.PHONY: check-openssl

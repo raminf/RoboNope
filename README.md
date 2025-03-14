@@ -65,6 +65,12 @@ make ARCH=x86_64 all    # Build for x86_64
 make STANDALONE=1
 ```
 
+The build system will automatically:
+- Download and configure required dependencies
+- Detect your platform and architecture
+- Set up the appropriate build environment
+- Compile the module and necessary components
+
 ### Running Tests
 
 ```bash
@@ -169,6 +175,13 @@ make clean-demo
 make clean-build
 ```
 
+The Makefile is organized into logical sections for easier maintenance:
+- BUILD TARGETS - For building the module and its dependencies
+- CLEAN TARGETS - For cleaning up build artifacts and environments
+- STANDALONE MODULE TARGETS - For standalone module builds and installation
+- DEMO TARGETS - For running and managing the demo environment
+- DEPENDENCY CHECKS - For verifying and configuring dependencies
+
 ## Installation
 
 ### From Release Package
@@ -203,6 +216,8 @@ This will create a `standalone` directory containing:
 - `module/ngx_http_robonope_module.so` - The compiled module
 - `conf/nginx.conf.example` - Example configuration
 - `examples/` - Example content and robots.txt
+
+The standalone build automatically detects your Nginx installation and configures the module accordingly. It provides detailed instructions for system-wide installation after the build is complete.
 
 ## Configuration
 
@@ -336,6 +351,41 @@ Windows (MinGW):
 ```bash
 PATH="/path/to/pcre/lib:$PATH" tests/unit/test_robonope
 ```
+
+## Build System
+
+The RoboNope module uses a sophisticated build system with the following features:
+
+### Makefile Organization
+
+The Makefile is organized into logical sections for easier maintenance and development:
+- **BUILD TARGETS** - For building the module and its dependencies
+- **CLEAN TARGETS** - For cleaning up build artifacts and environments
+- **STANDALONE MODULE TARGETS** - For standalone module builds and installation
+- **DEMO TARGETS** - For running and managing the demo environment
+- **DEPENDENCY CHECKS** - For verifying and configuring dependencies
+
+### Automatic Dependency Management
+
+The build system automatically:
+- Detects and uses system libraries when available (OpenSSL, PCRE)
+- Downloads and builds dependencies when needed
+- Sets up the appropriate environment variables for your platform
+- Configures build flags based on your architecture and OS
+
+### Cross-Platform Support
+
+The build process is designed to work seamlessly across:
+- Different operating systems (Linux, macOS, FreeBSD, Windows via MinGW)
+- Different architectures (x86_64, ARM64)
+- Different build environments (with or without system dependencies)
+
+### Efficient Rebuilds
+
+The build system tracks source file dependencies to avoid unnecessary rebuilds:
+- Only rebuilds components that have changed
+- Provides targeted clean targets for specific components
+- Supports incremental builds for faster development
 
 ## License
 
