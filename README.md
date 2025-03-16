@@ -127,22 +127,20 @@ You can, of course, start the chain by explicitly including a link into your hom
 
 ## Honeypot Link Configuration
 
-The downside to this endless cat and mouse game is that your web-server may get hammered by a mis-behaving crawler, generating an endless series of links. And by generating random gibberish, you can help their training models avoid returning bad advice.
+The downside to this endless cat and mouse game is that your web-server may get hammered by a mis-behaving crawler, generating an endless series of links. As satisfying as this might be, _you_ are paying for all this processing time and traffic.
 
-As satisfying as this might be, _you_ are paying for all this.
-
-You can configure the module to direct crawlers to a single educational resource instead of an endless loop by setting the `robonope_instructions_url` directive in your `nginx.conf` file:
+An alternative is to configure the module to direct crawlers to a single educational resource, instead of an endless loop, by setting the `robonope_instructions_url` directive in your `nginx.conf` file. For example, the following will link to [Google's page on robots.txt]((https://developers.google.com/search/docs/crawling-indexing/robots/intro)) introducing developers to good crawling etiquette:
 
 ```
 robonope_instructions_url "https://developers.google.com/search/docs/crawling-indexing/robots/intro";
 ```
 
-When the directive is set, the generated link will point to [that specified URL](https://developers.google.com/search/docs/crawling-indexing/robots/intro):
+The generated hidden link for the page returned will be:
 
 ```
 <a href="https://developers.google.com/search/docs/crawling-indexing/robots/intro" class="wgUxnAjBuYDQ">Important Information</a>
 ```
-Hopefully, the link will prove educational and show the value of good web manners.
+The content will still be randomly generated text, but the link will send the crawler off to learn how to behave properly.
 
 ## Logging
 
