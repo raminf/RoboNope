@@ -8,22 +8,24 @@
 
 ![RoboNope](img/RoboNope.png)
 
-`RoboNope-nginx` is a module designed to deny access to files specified in the robots.txt `Disallow` entries. It can also serve as a [honeypot](https://en.wikipedia.org/wiki/Honeypot_(computing)), randomly serving generated content to bots that ignore [robots.txt](https://developers.google.com/search/docs/crawling-indexing/robots/intro) rules. Ignore at your peril.
+`RoboNope-nginx` is a module designed to deny access to files disallowed in the robots.txt file. It can also serve as a [honeypot](https://en.wikipedia.org/wiki/Honeypot_(computing)), randomly serving generated content to bots that ignore [robots.txt](https://developers.google.com/search/docs/crawling-indexing/robots/intro) rules. 
+
+_Ignore at your peril!_
 
 ## Problem
 
-Crawling the web goes back to the early days of indexing. In the spirit of cooperation, search engines were supposed to abide by the wishes of a website's owner by looking for, and honoring the contents of a `robots.txt` file (if present).
+[Web crawling](https://en.wikipedia.org/wiki/Web_crawler) goes back to the early days of the web. In the spirit of cooperation, search engines were supposed to abide by the wishes of a website's owner by looking for, and honoring the contents of a `robots.txt` file (if present).
 
-However, this was made voluntary. There have been [many reports of crawlers ignoring them](https://mjtsai.com/blog/2024/06/24/ai-companies-ignoring-robots-txt/).
+However, this was made voluntary. There have been [many reports of crawlers ignoring the wishes of content owners](https://mjtsai.com/blog/2024/06/24/ai-companies-ignoring-robots-txt/).
 
-For example, in [Mechanize](https://github.com/sparklemotion/mechanize), a popular web-scraping library, it is easy to bypass a `robots.txt` file:
+The technology makes this easy. For example, in [Mechanize](https://github.com/sparklemotion/mechanize), a popular web-scraping library, it is simple to bypass a `robots.txt` file:
 
 ```
 from mechanize import Browser
 br = Browser()
 br.set_handle_robots(False) # Ignore robots.txt
 ```
-And in [Scrapy](https://scrapy.org) it's as simple as setting `ROBOTSTXT_OBEY` to `False`.
+And in [Scrapy](https://scrapy.org), it's a matter of setting `ROBOTSTXT_OBEY` to `False`.
 
 ## What can you do?
 
@@ -40,9 +42,6 @@ The first three are voluntary and can be ignored, and the last two are a pain to
 Why not just enforce `robots.txt` and make it __mandatory__ instead of __optional__?
 
 This is what `RoboNope` does.
-
-
-
 
 ## Example
 
@@ -65,11 +64,11 @@ Disallow: /nogoogle/
 Disallow: /private/google/
 Disallow: /*.pdf$
 ```
-This means all content is allowed, except for the contents specifically disallowed. A known crawler that identifies itself as `BadBot` is completely disallowed. And the official Googlebot is told not to search for specific file patterns.
+This means all content is allowed, except for paths that match the URLs in the disallowed list. Next, it specifies that a crawler that identifies itself as `BadBot` is completely disallowed. Finally, the official Googlebot is told not to search for specific file patterns.
 
-Obviously, a misbehaving bot could ignore these directives, or present itself as a benign crawler via faking its `User-agent` setting.
+Obviously, a misbehaving bot can ignore any and all these directives, or present itself as a benign crawler via faking its `User-agent` setting.
 
-With `RoboNope-nginx`, if someone tries to access any page in the Disallow tags, they get:
+With `RoboNope-nginx`, if someone tries to access any page that matches the _Disallow_ tags, they get:
 
 ```
 % curl https://{url}/private/index.html
@@ -116,7 +115,7 @@ Following that link, the crawler may receive a different file:
 </html>
 ```
 
-This has a link to a different page (randomly selected from whatever has been explicitly disallowed inside `robots.txt`):
+This has randomly generated gibberish content, and a link to a different page (randomly selected from whatever has been explicitly disallowed inside `robots.txt`):
 
 ```
 <a href="/admin/secrets.html" class="RRsNdyetNRjW">Important Information</a>
@@ -124,23 +123,26 @@ This has a link to a different page (randomly selected from whatever has been ex
 
 And so on and so forth...
 
+You can, of course, start the chain by explicitly including a link into your home page that goes to a disallowed link. Crawlers recursively following down all links will inevitably fall into the [honeypot](https://en.wikipedia.org/wiki/Honeypot_(computing)) trap and get stuck there.
+
 ## Honeypot Link Configuration
 
-The downside to this endless cat and mouse game is that your web-server may get hammered by a mis-behaving crawler, generating an endless series of links. As satisfying as this might be, _you_ are paying for all this.
+The downside to this endless cat and mouse game is that your web-server may get hammered by a mis-behaving crawler, generating an endless series of links. And by generating random gibberish, you can help their training models avoid returning bad advice.
 
-You can configure the module to direct crawlers to a single educational resource instead of an endless loop by setting the `robonope_instructions_url` directive:
+As satisfying as this might be, _you_ are paying for all this.
+
+You can configure the module to direct crawlers to a single educational resource instead of an endless loop by setting the `robonope_instructions_url` directive in your `nginx.conf` file:
 
 ```
-    robonope_instructions_url "https://developers.google.com/search/docs/crawling-indexing/robots/intro";
+robonope_instructions_url "https://developers.google.com/search/docs/crawling-indexing/robots/intro";
 ```
 
-When the `robonope_instructions_url` directive is set, the generated honeypot link will point to the specified URL:
+When the directive is set, the generated link will point to [that specified URL](https://developers.google.com/search/docs/crawling-indexing/robots/intro):
 
 ```
 <a href="https://developers.google.com/search/docs/crawling-indexing/robots/intro" class="wgUxnAjBuYDQ">Important Information</a>
 ```
-
-If the `robonope_instructions_url` directive is not set, the module will defer to normal more, generating internal honeypot links that lead to other disallowed paths.
+Hopefully, the link will prove educational and show the value of good web manners.
 
 ## Logging
 
@@ -154,7 +156,7 @@ robonope_db_path /path/to/robonope.db;
 
 When the database path is not set, logging is disabled.
 
-You can run the [sqlite3 CLI](https://sqlite.org/cli.html) to see for yourself what it stores:
+You can run the [sqlite3 CLI](https://sqlite.org/cli.html) to see what it stores:
 
 ```
 sqlite3 demo/robonope.db .tables
@@ -176,19 +178,19 @@ According to [W3Techs](https://w3techs.com/technologies/overview/web_server) the
 - [Litespeed](https://www.litespeedtech.com/products/litespeed-web-server) (14.5%)
 - [Node.js](https://nodejs.org) (4.2%)
 
-This first version has been tested with `nginx` v1.24. If there is demand, separate versions for other servers with the same functionality will also be released. This includes [Wordpress robots.txt](https://docs.wpvip.com/security-controls/robots-txt/).
+This first version has been tested with `nginx` v1.24. If there is demand, separate versions for other servers with the same functionality will be released. This includes [Wordpress robots.txt](https://docs.wpvip.com/security-controls/robots-txt/).
 
 And of course, community contributions are most Welcome!
 
 ## Features
 
-- Parses and enforces robots.txt rules
+- Parses and enforces `robots.txt` rules
 - Generates _dynamic_ content for disallowed paths
 - Tracks bot requests in SQLite (or DuckDB -- _work in progress_) when database path is configured
 - Supports both static and dynamic content generation
 - Configurable caching for performance
 - Honeypot link generation with configurable destination via `robonope_instructions_url`
-- Comprehensive test suite
+- Test suite
 - Cross-platform support
 
 ## Quick Start
