@@ -38,9 +38,21 @@ static ngx_int_t ngx_http_robonope_handler(ngx_http_request_t *r);
 static void ngx_http_robonope_cleanup_db(void *data);
 static void ngx_http_robonope_cache_cleanup(ngx_http_robonope_main_conf_t *mcf) __attribute__((unused));
 static u_char *ngx_http_robonope_generate_random_text(ngx_pool_t *pool, ngx_uint_t words);
-static ngx_str_t *ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url);
+static ngx_str_t *ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url, ngx_array_t *disallow_patterns, ngx_http_robonope_loc_conf_t *lcf);
 static ngx_int_t ngx_http_robonope_send_response(ngx_http_request_t *r, u_char *content);
 static u_char *ngx_http_robonope_generate_class_name(ngx_pool_t *pool);
+static ngx_int_t ngx_http_robonope_serve_honeypot(ngx_http_request_t *r, ngx_http_robonope_loc_conf_t *lcf, ngx_str_t *honeypot_link);
+static ngx_int_t ngx_http_robonope_load_robots_and_db(ngx_http_request_t *r, ngx_http_robonope_loc_conf_t *lcf, 
+                                                    ngx_str_t **robots_content, ngx_array_t **disallow_patterns);
+static ngx_int_t ngx_http_robonope_is_disallowed(ngx_http_request_t *r, ngx_array_t *disallow_patterns);
+static ngx_int_t ngx_http_robonope_log_request(
+#ifdef ROBONOPE_USE_DUCKDB
+    duckdb_connection conn,
+#else
+    sqlite3 *db,
+#endif
+    ngx_http_request_t *r,
+    ngx_str_t *matched_pattern);
 
 static ngx_command_t ngx_http_robonope_commands[] = {
     {
@@ -113,6 +125,14 @@ static ngx_command_t ngx_http_robonope_commands[] = {
         ngx_conf_set_flag_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_robonope_loc_conf_t, use_lorem_ipsum),
+        NULL
+    },
+    {
+        ngx_string("robonope_instructions_url"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+        ngx_conf_set_str_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_robonope_loc_conf_t, instructions_url),
         NULL
     },
     ngx_null_command
@@ -196,6 +216,12 @@ ngx_http_robonope_create_loc_conf(ngx_conf_t *cf)
     conf->cache_ttl = NGX_CONF_UNSET_UINT;
     conf->max_cache_entries = NGX_CONF_UNSET_UINT;
     conf->use_lorem_ipsum = NGX_CONF_UNSET;
+    
+    conf->robots_path.data = NULL;
+    conf->db_path.data = NULL;
+    conf->static_content_path.data = NULL;
+    conf->honeypot_class.data = NULL;
+    conf->instructions_url.data = NULL;
 
     return conf;
 }
@@ -215,6 +241,11 @@ ngx_http_robonope_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_uint_value(conf->max_cache_entries, prev->max_cache_entries, NGX_HTTP_ROBONOPE_MAX_CACHE);
     ngx_conf_merge_str_value(conf->honeypot_class, prev->honeypot_class, "honeypot");
     ngx_conf_merge_value(conf->use_lorem_ipsum, prev->use_lorem_ipsum, 1);
+    
+    // Don't set a default value for instructions_url
+    if (conf->instructions_url.data == NULL) {
+        conf->instructions_url = prev->instructions_url;
+    }
 
     return NGX_CONF_OK;
 }
@@ -257,103 +288,54 @@ ngx_http_robonope_init(ngx_conf_t *cf)
 static ngx_int_t
 ngx_http_robonope_handler(ngx_http_request_t *r)
 {
-    ngx_http_robonope_main_conf_t *mcf;
     ngx_http_robonope_loc_conf_t *lcf;
-    ngx_md5_t md5;
-    u_char fingerprint[16];
+    ngx_str_t *robots_content = NULL;
+    ngx_array_t *disallow_patterns = NULL;
+    ngx_str_t *honeypot_link = NULL;
+    ngx_str_t *user_agent = NULL;
+    ngx_str_t ua_lowercase;
+    size_t i;
 
-    mcf = ngx_http_get_module_main_conf(r, ngx_http_robonope_module);
     lcf = ngx_http_get_module_loc_conf(r, ngx_http_robonope_module);
 
     if (!lcf->enable) {
         return NGX_DECLINED;
     }
 
-    // Check if User-Agent header exists
-    if (r->headers_in.user_agent == NULL) {
+    /* Check if the User-Agent header exists and if it's a bot */
+    if (r->headers_in.user_agent) {
+        user_agent = &r->headers_in.user_agent->value;
+        
+        /* Convert user agent to lowercase for case-insensitive comparison */
+        ua_lowercase.len = user_agent->len;
+        ua_lowercase.data = ngx_pnalloc(r->pool, ua_lowercase.len);
+        if (ua_lowercase.data == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        
+        for (i = 0; i < user_agent->len; i++) {
+            ua_lowercase.data[i] = ngx_tolower(user_agent->data[i]);
+        }
+    }
+
+    /* Load robots.txt and database */
+    if (ngx_http_robonope_load_robots_and_db(r, lcf, &robots_content, &disallow_patterns) != NGX_OK) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    /* Check if the request URI is in the disallow patterns */
+    if (!ngx_http_robonope_is_disallowed(r, disallow_patterns)) {
         return NGX_DECLINED;
     }
 
-    // Initialize robots.txt and DB if not already done
-    if (mcf->robot_entries->nelts == 0) {
-        if (ngx_http_robonope_load_robots(mcf, &lcf->robots_path) != NGX_OK) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "failed to load robots.txt");
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
+    /* Generate honeypot link - this will use instructions URL if redirect_to_instructions is enabled */
+    honeypot_link = ngx_http_robonope_generate_honeypot_link(r->pool, &r->uri, disallow_patterns, lcf);
+    if (honeypot_link == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    if (mcf->db == NULL) {
-        if (ngx_http_robonope_init_db(mcf, &lcf->db_path) != NGX_OK) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "failed to initialize database");
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-    }
-
-    // Check if URL matches any disallow pattern
-    for (ngx_uint_t i = 0; i < mcf->robot_entries->nelts; i++) {
-        ngx_http_robonope_robot_entry_t *entry = &((ngx_http_robonope_robot_entry_t *)mcf->robot_entries->elts)[i];
-        
-        // Skip if no disallow patterns
-        if (entry->disallow == NULL || entry->disallow->nelts == 0) {
-            continue;
-        }
-        
-        ngx_str_t *pattern = entry->disallow->elts;
-        
-        // Check each disallow pattern
-        for (ngx_uint_t j = 0; j < entry->disallow->nelts; j++) {
-            if (ngx_strncmp(r->uri.data, pattern[j].data, pattern[j].len) == 0) {
-                ngx_str_t matched_pattern = pattern[j];
-                
-                // Generate MD5 fingerprint of client IP
-                ngx_md5_init(&md5);
-                ngx_md5_update(&md5, r->connection->addr_text.data, r->connection->addr_text.len);
-                ngx_md5_update(&md5, r->headers_in.user_agent->value.data, r->headers_in.user_agent->value.len);
-                ngx_md5_final(fingerprint, &md5);
-                
-                // Check if client is already in cache
-                if (ngx_http_robonope_cache_lookup(mcf, fingerprint) == NGX_OK) {
-                    // Return cached response
-                    u_char *content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry->disallow);
-                    if (content == NULL) {
-                        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-                    }
-                    
-                    // Log request
-                    ngx_http_robonope_log_request(
-                        mcf->db,
-                        r,
-                        &matched_pattern
-                    );
-                    
-                    // Send response
-                    return ngx_http_robonope_send_response(r, content);
-                } else {
-                    // Add client to cache
-                    ngx_http_robonope_cache_insert(mcf, fingerprint);
-                    
-                    // Generate new content
-                    u_char *content = ngx_http_robonope_generate_content(r->pool, &r->uri, entry->disallow);
-                    if (content == NULL) {
-                        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-                    }
-                    
-                    // Log request
-                    ngx_http_robonope_log_request(
-                        mcf->db,
-                        r,
-                        &matched_pattern
-                    );
-                    
-                    // Send response
-                    return ngx_http_robonope_send_response(r, content);
-                }
-            }
-        }
-    }
-    
-    // No match found, pass to next handler
-    return NGX_DECLINED;
+    /* Serve honeypot content */
+    return ngx_http_robonope_serve_honeypot(r, lcf, honeypot_link);
 }
 
 ngx_int_t
@@ -479,6 +461,11 @@ ngx_http_robonope_load_robots(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *rob
 static ngx_int_t
 ngx_http_robonope_init_db(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *db_path)
 {
+    // Check if db_path is valid
+    if (db_path == NULL || db_path->data == NULL || db_path->len == 0) {
+        return NGX_OK; // Return success but don't initialize the database
+    }
+
 #ifdef ROBONOPE_USE_DUCKDB
     if (duckdb_open((char *)db_path->data, &mcf->db) != DuckDBSuccess) {
         return NGX_ERROR;
@@ -527,115 +514,6 @@ ngx_http_robonope_init_db(ngx_http_robonope_main_conf_t *mcf, ngx_str_t *db_path
         sqlite3_free(err_msg);
         return NGX_ERROR;
     }
-#endif
-
-    return NGX_OK;
-}
-
-static u_char *
-ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns)
-{
-    /* We can't access the location configuration here, so we'll use default behavior */
-    u_char *content, *body;
-    ngx_str_t *honeypot_link;
-    size_t total_len;
-    u_char *random_class;
-
-    // Generate random class name
-    random_class = ngx_http_robonope_generate_class_name(pool);
-    if (random_class == NULL) {
-        return NULL;
-    }
-
-    // Generate body content - always use random text now
-    body = ngx_http_robonope_generate_random_text(pool, 50);
-    if (body == NULL) {
-        return NULL;
-    }
-
-    // Generate honeypot link
-    honeypot_link = ngx_http_robonope_generate_honeypot_link(pool, url);
-    if (honeypot_link == NULL) {
-        return NULL;
-    }
-
-    // Calculate total length needed
-    total_len = ngx_strlen(body) + honeypot_link->len + 500; // Extra space for HTML structure
-
-    content = ngx_pcalloc(pool, total_len);
-    if (content == NULL) {
-        return NULL;
-    }
-
-    // Construct the full HTML
-    ngx_sprintf(content,
-        "<html>\n"
-        "<head>\n"
-        "<style>\n"
-        ".%s { opacity: 0; position: absolute; top: -9999px; }\n"
-        "</style>\n"
-        "</head>\n"
-        "<body>\n"
-        "<div class=\"content\">\n"
-        "%s\n"
-        "</div>\n"
-        "<a href=\"%s\" class=\"%s\">Important Information</a>\n"
-        "</body>\n"
-        "</html>",
-        random_class,
-        body,
-        honeypot_link->data,
-        random_class);
-
-    return content;
-}
-
-static ngx_int_t
-ngx_http_robonope_log_request(
-#ifdef ROBONOPE_USE_DUCKDB
-    duckdb_connection conn,
-#else
-    sqlite3 *db,
-#endif
-    ngx_http_request_t *r,
-    ngx_str_t *matched_pattern)
-{
-    ngx_str_t ip;
-    ip.data = r->connection->addr_text.data;
-    ip.len = r->connection->addr_text.len;
-
-#ifdef ROBONOPE_USE_DUCKDB
-    char *sql = ngx_sprintf("INSERT INTO requests (ip, user_agent, url, matched_pattern) "
-                           "VALUES ('%s', '%s', '%s', '%s');",
-                           ip.data,
-                           r->headers_in.user_agent->value.data,
-                           r->uri.data,
-                           matched_pattern->data);
-
-    duckdb_state state;
-    state = duckdb_query(conn, sql, NULL);
-    if (state != DuckDBSuccess) {
-        return NGX_ERROR;
-    }
-
-#else
-    char *sql;
-    char *err_msg = NULL;
-
-    sql = sqlite3_mprintf("INSERT INTO requests (ip, user_agent, url, matched_pattern) "
-                         "VALUES ('%q', '%q', '%q', '%q');",
-                         ip.data,
-                         r->headers_in.user_agent->value.data,
-                         r->uri.data,
-                         matched_pattern->data);
-
-    if (sqlite3_exec(db, sql, NULL, NULL, &err_msg) != SQLITE_OK) {
-        sqlite3_free(err_msg);
-        sqlite3_free(sql);
-        return NGX_ERROR;
-    }
-
-    sqlite3_free(sql);
 #endif
 
     return NGX_OK;
@@ -727,32 +605,97 @@ ngx_http_robonope_generate_random_text(ngx_pool_t *pool, ngx_uint_t words)
 }
 
 static ngx_str_t *
-ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url)
+ngx_http_robonope_generate_honeypot_link(ngx_pool_t *pool, ngx_str_t *base_url, ngx_array_t *disallow_patterns, ngx_http_robonope_loc_conf_t *lcf)
 {
     ngx_str_t *link;
     u_char *p;
     size_t len;
+    ngx_str_t *patterns;
+    ngx_uint_t pattern_index;
     
-    // Create a honeypot link based on the base URL
-    len = base_url->len + sizeof("/admin/login") - 1;
+    // Check if we should use the instructions URL for the honeypot link
+    if (lcf != NULL && lcf->instructions_url.data != NULL && lcf->instructions_url.len > 0) {
+        // Use the configured instructions URL as the honeypot link
+        len = lcf->instructions_url.len;
+        
+        link = ngx_palloc(pool, sizeof(ngx_str_t));
+        if (link == NULL) {
+            return NULL;
+        }
+        
+        p = ngx_palloc(pool, len + 1);
+        if (p == NULL) {
+            return NULL;
+        }
+        
+        link->data = p;
+        p = ngx_cpymem(p, lcf->instructions_url.data, len);
+        *p = '\0';
+        link->len = len;
+        
+        return link;
+    }
+    
+    if (disallow_patterns == NULL || disallow_patterns->nelts == 0) {
+        // Fallback to default honeypot link if no disallow patterns are available
+        len = sizeof("/admin/index.html") - 1;
+        
+        link = ngx_palloc(pool, sizeof(ngx_str_t));
+        if (link == NULL) {
+            return NULL;
+        }
+        
+        p = ngx_palloc(pool, len + 1);
+        if (p == NULL) {
+            return NULL;
+        }
+        
+        link->data = p;
+        p = ngx_cpymem(p, "/admin/index.html", len);
+        *p = '\0';
+        link->len = len;
+        
+        return link;
+    }
+    
+    // Select a random pattern from the disallow list
+    patterns = disallow_patterns->elts;
+    pattern_index = ngx_random() % disallow_patterns->nelts;
+    
+    // Create a link based on the selected pattern
+    len = patterns[pattern_index].len;
+    
+    // Add some randomness to the path
+    static const char *extensions[] = {
+        "index.html", "login.php", "data.json", "config.xml", "settings.html"
+    };
+    static const size_t num_extensions = sizeof(extensions) / sizeof(extensions[0]);
+    const char *extension = extensions[ngx_random() % num_extensions];
+    size_t ext_len = ngx_strlen(extension);
     
     link = ngx_palloc(pool, sizeof(ngx_str_t));
     if (link == NULL) {
         return NULL;
     }
     
-    p = ngx_palloc(pool, len + 1);
+    // Allocate memory for pattern + "/" + extension + null terminator
+    p = ngx_palloc(pool, len + 1 + ext_len + 1);
     if (p == NULL) {
         return NULL;
     }
     
     link->data = p;
     
-    // Copy base URL
-    p = ngx_cpymem(p, base_url->data, base_url->len);
+    // Copy pattern
+    p = ngx_cpymem(p, patterns[pattern_index].data, patterns[pattern_index].len);
     
-    // Add honeypot path
-    p = ngx_cpymem(p, "/admin/login", sizeof("/admin/login") - 1);
+    // Add slash if the pattern doesn't end with one
+    if (p > link->data && *(p-1) != '/') {
+        *p++ = '/';
+    }
+    
+    // Add random extension
+    p = ngx_cpymem(p, extension, ext_len);
     
     *p = '\0';
     link->len = p - link->data;
@@ -870,4 +813,221 @@ ngx_http_robonope_generate_class_name(ngx_pool_t *pool)
     }
     
     return class_name;
+}
+
+static ngx_int_t
+ngx_http_robonope_serve_honeypot(ngx_http_request_t *r, ngx_http_robonope_loc_conf_t *lcf, ngx_str_t *honeypot_link)
+{
+    u_char *content, *body;
+    u_char *random_class;
+    size_t total_len;
+
+    // Generate random class name
+    random_class = ngx_http_robonope_generate_class_name(r->pool);
+    if (random_class == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    // Generate body content - always use random text
+    body = ngx_http_robonope_generate_random_text(r->pool, 50);
+    if (body == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    // Calculate total length needed
+    total_len = ngx_strlen(body) + honeypot_link->len + 500; // Extra space for HTML structure
+
+    content = ngx_pcalloc(r->pool, total_len);
+    if (content == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    // Construct the full HTML
+    ngx_sprintf(content,
+        "<html>\n"
+        "<head>\n"
+        "<style>\n"
+        ".%s { opacity: 0; position: absolute; top: -9999px; }\n"
+        "</style>\n"
+        "</head>\n"
+        "<body>\n"
+        "<div class=\"content\">\n"
+        "%s\n"
+        "</div>\n"
+        "<a href=\"%s\" class=\"%s\">Important Information</a>\n"
+        "</body>\n"
+        "</html>",
+        random_class,
+        body,
+        honeypot_link->data,
+        random_class);
+
+    // Send the response
+    return ngx_http_robonope_send_response(r, content);
+}
+
+static ngx_int_t
+ngx_http_robonope_load_robots_and_db(ngx_http_request_t *r, ngx_http_robonope_loc_conf_t *lcf, 
+                                    ngx_str_t **robots_content, ngx_array_t **disallow_patterns)
+{
+    ngx_http_robonope_main_conf_t *mcf;
+    
+    mcf = ngx_http_get_module_main_conf(r, ngx_http_robonope_module);
+    if (mcf == NULL) {
+        return NGX_ERROR;
+    }
+    
+    // Initialize robots.txt if not already done
+    if (mcf->robot_entries->nelts == 0) {
+        if (ngx_http_robonope_load_robots(mcf, &lcf->robots_path) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "failed to load robots.txt");
+            return NGX_ERROR;
+        }
+    }
+    
+    // Initialize database if not already done and db_path is set
+    if (mcf->db == NULL && lcf->db_path.data != NULL && lcf->db_path.len > 0) {
+        if (ngx_http_robonope_init_db(mcf, &lcf->db_path) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "failed to initialize database");
+            // Continue even if database initialization fails
+            // This allows the module to function without logging
+        }
+    }
+    
+    // Create a combined array of all disallow patterns
+    *disallow_patterns = ngx_array_create(r->pool, 10, sizeof(ngx_str_t));
+    if (*disallow_patterns == NULL) {
+        return NGX_ERROR;
+    }
+    
+    // Collect all disallow patterns from all user-agent entries
+    for (ngx_uint_t i = 0; i < mcf->robot_entries->nelts; i++) {
+        ngx_http_robonope_robot_entry_t *entry = &((ngx_http_robonope_robot_entry_t *)mcf->robot_entries->elts)[i];
+        
+        if (entry->disallow == NULL || entry->disallow->nelts == 0) {
+            continue;
+        }
+        
+        ngx_str_t *patterns = entry->disallow->elts;
+        for (ngx_uint_t j = 0; j < entry->disallow->nelts; j++) {
+            ngx_str_t *pattern = ngx_array_push(*disallow_patterns);
+            if (pattern == NULL) {
+                return NGX_ERROR;
+            }
+            
+            pattern->len = patterns[j].len;
+            pattern->data = patterns[j].data;
+        }
+    }
+    
+    return NGX_OK;
+}
+
+static ngx_int_t
+ngx_http_robonope_is_disallowed(ngx_http_request_t *r, ngx_array_t *disallow_patterns)
+{
+    ngx_str_t *patterns;
+    ngx_str_t matched_pattern;
+    ngx_http_robonope_main_conf_t *mcf;
+    ngx_http_robonope_loc_conf_t *lcf;
+    ngx_md5_t md5;
+    u_char fingerprint[16];
+    
+    if (disallow_patterns == NULL || disallow_patterns->nelts == 0) {
+        return 0; // Not disallowed if no patterns
+    }
+    
+    mcf = ngx_http_get_module_main_conf(r, ngx_http_robonope_module);
+    lcf = ngx_http_get_module_loc_conf(r, ngx_http_robonope_module);
+    if (mcf == NULL || lcf == NULL) {
+        return 0;
+    }
+    
+    patterns = disallow_patterns->elts;
+    
+    // Check each disallow pattern
+    for (ngx_uint_t i = 0; i < disallow_patterns->nelts; i++) {
+        if (ngx_strncmp(r->uri.data, patterns[i].data, patterns[i].len) == 0) {
+            matched_pattern = patterns[i];
+            
+            // Generate MD5 fingerprint of client IP and user agent
+            ngx_md5_init(&md5);
+            ngx_md5_update(&md5, r->connection->addr_text.data, r->connection->addr_text.len);
+            
+            if (r->headers_in.user_agent != NULL) {
+                ngx_md5_update(&md5, r->headers_in.user_agent->value.data, r->headers_in.user_agent->value.len);
+            }
+            
+            ngx_md5_final(fingerprint, &md5);
+            
+            // Log request only if database path is set
+            if (lcf->db_path.data != NULL && lcf->db_path.len > 0 && mcf->db != NULL) {
+                ngx_http_robonope_log_request(
+                    mcf->db,
+                    r,
+                    &matched_pattern
+                );
+            }
+            
+            // Add client to cache if not already there
+            if (ngx_http_robonope_cache_lookup(mcf, fingerprint) != NGX_OK) {
+                ngx_http_robonope_cache_insert(mcf, fingerprint);
+            }
+            
+            return 1; // URL is disallowed
+        }
+    }
+    
+    return 0; // URL is not disallowed
+}
+
+static ngx_int_t
+ngx_http_robonope_log_request(
+#ifdef ROBONOPE_USE_DUCKDB
+    duckdb_connection conn,
+#else
+    sqlite3 *db,
+#endif
+    ngx_http_request_t *r,
+    ngx_str_t *matched_pattern)
+{
+    ngx_str_t ip;
+    ip.data = r->connection->addr_text.data;
+    ip.len = r->connection->addr_text.len;
+
+#ifdef ROBONOPE_USE_DUCKDB
+    char *sql = ngx_sprintf("INSERT INTO requests (ip, user_agent, url, matched_pattern) "
+                           "VALUES ('%s', '%s', '%s', '%s');",
+                           ip.data,
+                           r->headers_in.user_agent->value.data,
+                           r->uri.data,
+                           matched_pattern->data);
+
+    duckdb_state state;
+    state = duckdb_query(conn, sql, NULL);
+    if (state != DuckDBSuccess) {
+        return NGX_ERROR;
+    }
+
+#else
+    char *sql;
+    char *err_msg = NULL;
+
+    sql = sqlite3_mprintf("INSERT INTO requests (ip, user_agent, url, matched_pattern) "
+                         "VALUES ('%q', '%q', '%q', '%q');",
+                         ip.data,
+                         r->headers_in.user_agent->value.data,
+                         r->uri.data,
+                         matched_pattern->data);
+
+    if (sqlite3_exec(db, sql, NULL, NULL, &err_msg) != SQLITE_OK) {
+        sqlite3_free(err_msg);
+        sqlite3_free(sql);
+        return NGX_ERROR;
+    }
+
+    sqlite3_free(sql);
+#endif
+
+    return NGX_OK;
 } 

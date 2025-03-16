@@ -34,6 +34,8 @@ OPENSSL_URL = https://www.openssl.org/source/$(OPENSSL_TAR)
 # Database selection (default to SQLite)
 DB_ENGINE ?= sqlite
 DB_PATH ?= $(PWD)/build/demo/db/robonope.db
+# Instructions URL (default to Google documentation)
+INSTRUCTIONS_URL ?= https://developers.google.com/search/docs/crawling-indexing/robots/intro
 
 # Architecture detection and selection
 ARCH ?= $(shell uname -m)
@@ -275,7 +277,7 @@ SRC_FILES := $(wildcard src/*.c src/*.h)
 .PHONY: all build build-target check-module-binary release clean clean-demo standalone-clean clean-build \
         standalone-build standalone-install install help check-openssl prepare-build download \
         build-pcre build-openssl configure-nginx generate-headers build-unity \
-        demo demo-start demo-test demo-logs demo-stop
+        demo demo-start demo-test demo-logs demo-stop test-random-links test-redirect-instructions test-all
 
 #################################################
 # BUILD TARGETS
@@ -529,27 +531,33 @@ help:
 	@echo "  make demo-stop          - Stop the demo server"
 	@echo "  make demo               - Run demo-start and demo-test (but not demo-stop)"
 	@echo ""
+	@echo "Testing:"
+	@echo "  make test               - Run all tests"
+	@echo "  make test-robonope-only - Run RoboNope module tests"
+	@echo "  make test-random-links  - Test with random links (redirect_to_instructions off)"
+	@echo "  make test-redirect-instructions - Test with redirect to instructions enabled"
+	@echo "  make test-all           - Run all configuration tests"
+	@echo ""
 	@echo "Demo Configuration:"
 	@echo "  DB_PATH                 - Override the database path"
 	@echo "  DB_ENGINE               - Select database engine (sqlite or duckdb)"
+	@echo "  INSTRUCTIONS_URL        - Override the instructions URL for redirect_to_instructions"
 	@echo ""
 	@echo "Current Demo Settings:"
 	@echo "  Database Path: $(DB_PATH)"
 	@echo "  Database Engine: $(DB_ENGINE)"
+	@echo "  Instructions URL: $(INSTRUCTIONS_URL)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  DB_PATH=/tmp/robonope.db make demo-start  - Use custom database location"
 	@echo "  DB_PATH=/tmp/robonope.db make demo-logs   - View logs from custom database"
 	@echo "  make demo-logs                            - View logs from default database"
+	@echo "  INSTRUCTIONS_URL=https://foo.bar make demo-start - Use custom instructions URL"
 	@echo ""
 	@echo "Dependencies:"
 	@echo "  make download           - Download required dependencies"
 	@echo "  make install-deps       - Install system dependencies"
 	@echo "  make check-deps         - Check if all dependencies are satisfied"
-	@echo ""
-	@echo "Testing:"
-	@echo "  make test               - Run all tests"
-	@echo "  make test-robonope-only - Run RoboNope module tests"
 	@echo ""
 	@echo "Distribution:"
 	@echo "  make release            - Create a standalone distribution package"
@@ -726,10 +734,7 @@ build-unity:
 # DEMO TARGETS
 #################################################
 
-demo-start: build
-	@echo "Using existing binaries:"
-	@echo "  Module: build/nginx-1.24.0/objs/ngx_http_robonope_module.so"
-	@echo "  Nginx:  build/nginx-1.24.0/objs/nginx"
+demo-start: check-module-binary
 	@echo "Setting up demo environment..."
 	@mkdir -p build/demo/conf
 	@mkdir -p build/demo/html
@@ -751,7 +756,10 @@ demo-start: build
 	@echo "    # RoboNope configuration" >> build/demo/conf/nginx.conf
 	@echo "    robonope_enable on;" >> build/demo/conf/nginx.conf
 	@echo "    robonope_robots_path $(PWD)/build/demo/html/robots.txt;" >> build/demo/conf/nginx.conf
-	@echo "    robonope_db_path $(DB_PATH);" >> build/demo/conf/nginx.conf
+	@echo "    # Uncomment to enable database logging" >> build/demo/conf/nginx.conf
+	@echo "    # robonope_db_path $(DB_PATH);" >> build/demo/conf/nginx.conf
+	@echo "    # Uncomment to enable redirect to instructions" >> build/demo/conf/nginx.conf
+	@echo "    # robonope_instructions_url \"$(INSTRUCTIONS_URL)\";" >> build/demo/conf/nginx.conf
 	@echo "    # Rate limiting zones" >> build/demo/conf/nginx.conf
 	@echo "    limit_req_zone \$$binary_remote_addr zone=robonope_limit:10m rate=1r/s;" >> build/demo/conf/nginx.conf
 	@echo "    server {" >> build/demo/conf/nginx.conf
@@ -787,13 +795,32 @@ demo-logs:
 
 demo-stop:
 	@echo "Stopping demo server..."
-	@pkill nginx || true
+	@if [ -f "build/demo/logs/nginx.pid" ]; then \
+		cd build/demo && ../../build/nginx-1.24.0/objs/nginx -p . -c conf/nginx.conf -s stop 2>/dev/null || true; \
+	else \
+		pkill nginx || true; \
+	fi
 	@sleep 2
 	@echo "Demo server stopped"
 
 # Alias for backward compatibility
 demo: demo-start demo-test
 	@echo "Demo completed. Run 'make demo-stop' to shutdown the server."
+
+# Test targets for different configurations
+test-random-links:
+	@echo "Running tests for random links (robonope_redirect_to_instructions off)..."
+	@tests/test_random_links.sh
+
+test-redirect-instructions:
+	@echo "Running tests for redirect to instructions (robonope_redirect_to_instructions on)..."
+	@tests/test_redirect_instructions.sh
+
+test-all:
+	@echo "Running all configuration tests..."
+	@make test-random-links
+	@make test-redirect-instructions
+	@echo "All configuration tests passed!"
 
 #################################################
 # DEPENDENCY CHECKS

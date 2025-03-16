@@ -25,6 +25,15 @@ build/demo/db/
 build/demo/nginx.conf
 build/demo/mime.types
 build/demo/*.bak
+build/demo/client_body_temp/
+build/demo/fastcgi_temp/
+build/demo/proxy_temp/
+build/demo/scgi_temp/
+build/demo/uwsgi_temp/
+demo/*.bak
+demo/robonope.db
+demo/logs/
+demo/conf/
 
 # Distribution packages
 robonope-module-*.tar.gz

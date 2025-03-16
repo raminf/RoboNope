@@ -55,6 +55,7 @@ typedef struct {
     ngx_str_t    honeypot_class;     /* CSS class for honeypot elements */
     ngx_array_t *disallow_patterns;  /* Patterns to disallow */
     ngx_flag_t   use_lorem_ipsum;    /* Use Lorem Ipsum for content */
+    ngx_str_t    instructions_url;   /* URL to redirect to for instructions about robots.txt */
 } ngx_http_robonope_loc_conf_t;
 
 /* Function prototypes */
@@ -73,7 +74,6 @@ static ngx_int_t ngx_http_robonope_log_request(
 #endif
     ngx_http_request_t *r,
     ngx_str_t *matched_pattern);
-static u_char *ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns);
 
 /* Externals needed by the implementation */
 extern ngx_module_t ngx_http_module;
@@ -91,7 +91,6 @@ ngx_int_t ngx_http_robonope_log_request(sqlite3 *db, ngx_http_request_t *r, ngx_
 ngx_int_t ngx_http_robonope_init_cache(ngx_http_robonope_main_conf_t *mcf);
 ngx_int_t ngx_http_robonope_cache_lookup(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint);
 void ngx_http_robonope_cache_insert(ngx_http_robonope_main_conf_t *mcf, u_char *fingerprint);
-u_char *ngx_http_robonope_generate_content(ngx_pool_t *pool, ngx_str_t *url, ngx_array_t *disallow_patterns);
 #endif /* NGINX_BUILD */
 
 #endif /* _NGX_HTTP_ROBONOPE_MODULE_H_INCLUDED_ */ 
