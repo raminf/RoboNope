@@ -64,7 +64,7 @@ Disallow: /nogoogle/
 Disallow: /private/google/
 Disallow: /*.pdf$
 ```
-This means all content is allowed, except for paths that match the URLs in the disallowed list. Next, it specifies that a crawler that identifies itself as `BadBot` is completely disallowed. Finally, the official Googlebot is told not to search for specific file patterns.
+The first section specifies that all content is allowed, except for paths that match the URLs in the disallowed list. The next bans any crawler that identifies itself as `BadBot`. Finally, the official Googlebot search engine crawler is instructed not to search for specific file patterns and types.
 
 Obviously, a misbehaving bot can ignore any and all these directives, or present itself as a benign crawler via faking its `User-agent` setting.
 
@@ -91,13 +91,13 @@ To humans, this looks like this:
 
 ![Browser Page](img/browser-page.png)
 
-But to a mis-behaving crawler, it offers a tantalizing link to follow (notice the link is invisible to humans): 
+The text is randomly generated gibberish, to help those who wish to train their models. To a mis-behaving crawler, it offers a second, tantalizing link to follow. The link is made invisible to humans and the CSS class name is randomly generated:
 
 ```
 <a href="/norobots/index.html" class="RRsNdyetNRjW">Important Information</a>
 ```
 
-Following that link, the crawler may receive a different file:
+Following that (also banned) link, a crawler may receive a different file:
 
 ```
 <html>
@@ -123,7 +123,7 @@ This has randomly generated gibberish content, and a link to a different page (r
 
 And so on and so forth...
 
-You can, of course, start the chain by explicitly including a link into your home page that goes to a disallowed link. Crawlers recursively following down all links will inevitably fall into the [honeypot](https://en.wikipedia.org/wiki/Honeypot_(computing)) trap and get stuck there.
+You can, of course, start the chain by explicitly including a link to a banned page in your home page and use similar techniques to hide it from human visitors. Crawlers recursively following down all links on a home page (and ignoring banned paths) will inevitably fall into the [honeypot](https://en.wikipedia.org/wiki/Honeypot_(computing)) trap and get stuck there.
 
 ## Honeypot Link Configuration
 
