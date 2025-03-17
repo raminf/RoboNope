@@ -8,24 +8,46 @@
 
 ![RoboNope](img/RoboNope.png)
 
-`RoboNope-nginx` is a module designed to deny access to files disallowed in the robots.txt file. It can also serve as a [honeypot](https://en.wikipedia.org/wiki/Honeypot_(computing)), randomly serving generated content to bots that ignore [robots.txt](https://developers.google.com/search/docs/crawling-indexing/robots/intro) rules. 
+Are you concerned that your online content is getting scraped-up without your permission by search engines or AI training models? 
 
-_Ignore at your peril!_
+Are you torn between sharing openly and feeling like others are freely taking advantage of your work to enrich themselves?
+
+`RoboNope`is here to help.
+
+---
 
 ## Problem
 
-[Web crawling](https://en.wikipedia.org/wiki/Web_crawler) goes back to the early days of the web. In the spirit of cooperation, search engines were supposed to abide by the wishes of a website's owner by looking for, and honoring the contents of a `robots.txt` file (if present).
+[Web crawling](https://en.wikipedia.org/wiki/Web_crawler) goes back to the early days of the web. In the spirit of cooperation, search engines were supposed to abide by the wishes of a website's owner by looking for, and honoring the contents of a`robots.txt`file (if present).
 
 However, this was made voluntary. There have been [many reports of crawlers ignoring the wishes of content owners](https://mjtsai.com/blog/2024/06/24/ai-companies-ignoring-robots-txt/).
 
-The technology makes this easy. For example, in [Mechanize](https://github.com/sparklemotion/mechanize), a popular web-scraping library, it is simple to bypass a `robots.txt` file:
+The voluntary approach hasn't worked out.
+
+## Our Solution 
+
+[Nginx](https://nginx.org) is the most popular web-server out there, used in over 33% of servers on the net (see below). Nginx also supports _add-on modules_ to extend its functionality.
+
+`RoboNope-nginx` is an extension module for Nginx. Its main function is to enforce the access rules specified by content creators. This is commonly done by adding a URL pattern to the disallowed list in a server's `robots.txt` file.
+
+This module can also serve as a [honeypot](https://en.wikipedia.org/wiki/Honeypot_(computing)), randomly serving generated content to bots that ignore [robots.txt](https://developers.google.com/search/docs/crawling-indexing/robots/intro) rules. 
+
+_Ignore at your peril!_
+
+## Technical Background 
+
+Web crawler technology makes it easy to snag all content, by starting with a home page and visiting every other link, then recursively visiting all the other pages, and so forth. 
+
+Common web crawling tools make it easy to bypass the content publisher's access control wishes. 
+
+For example, all it takes for [Mechanize](https://github.com/sparklemotion/mechanize) -- a popular web-scraping library -- to bypass a `robots.txt` file is:
 
 ```
 from mechanize import Browser
 br = Browser()
-br.set_handle_robots(False) # Ignore robots.txt
+br.set_handle_robots(False) # <- Ignore robots.txt
 ```
-And in [Scrapy](https://scrapy.org), it's a matter of setting `ROBOTSTXT_OBEY` to `False`.
+And in [Scrapy](https://scrapy.org), another Python-based crawling tool, it's just a matter of setting `ROBOTSTXT_OBEY` to `False`.
 
 ## What can you do?
 
@@ -37,7 +59,7 @@ There are a number of steps content-providers can take to limit access to their 
 - Make every link go through a javascript filter to check access.
 - Set up password access through `.htaccess`
 
-The first three are voluntary and can be ignored, and the last two are a pain to set up and maintain.
+The first three are voluntary, and can be ignored. The last two are a pain to set up, maintain, and keep sync'ed up with a `robots.txt` file.
 
 Why not just enforce `robots.txt` and make it __mandatory__ instead of __optional__?
 
@@ -64,7 +86,11 @@ Disallow: /nogoogle/
 Disallow: /private/google/
 Disallow: /*.pdf$
 ```
-The first section specifies that all content is allowed, except for paths that match the URLs in the disallowed list. The next bans any crawler that identifies itself as `BadBot`. Finally, the official Googlebot search engine crawler is instructed not to search for specific file patterns and types.
+The first section specifies that all content is allowed, except for paths that match the URLs in the disallowed list. 
+
+The next section bans any crawler that identifies itself as `BadBot`. 
+
+In the final section, the official _Googlebot_ search engine crawler is instructed to ignore  specific file patterns and file types.
 
 Obviously, a misbehaving bot can ignore any and all these directives, or present itself as a benign crawler via faking its `User-agent` setting.
 
